@@ -17,14 +17,10 @@ SMOOBU_API_KEY = opts.get("smoobu_api_key")
 UNIFI_IP       = opts.get("unifi_host")      # z.B. 192.168.1.1
 UNIFI_TOKEN    = opts.get("unifi_token")
 WEBHOOK_SECRET = opts.get("webhook_secret")
+ACCESS_POLICY_ID = opts.get("access_policy_id")   # ✅ NEUE OPTION
 
 # Fixer API-Port + Developer-Prefix
 UNIFI_BASE = f"https://{UNIFI_IP}:12445/api/v1/developer"
-
-# ----------------------------------------------------
-# ACCESS POLICY ID "Gaeste"
-GAESTE_POLICY_ID = "0519dc46-ae09-4512-bc1d-9f961adcc389"
-# ----------------------------------------------------
 
 async def status(request):
     return web.Response(
@@ -32,14 +28,15 @@ async def status(request):
 UniFi Access AutoPIN läuft ✔
 
 API: {UNIFI_BASE}
-Policy: {GAESTE_POLICY_ID}
+Policy: {ACCESS_POLICY_ID}
 Secret: {WEBHOOK_SECRET}
+
+Alles funktioniert.
 """,
         content_type="text/plain"
     )
 
 def to_unix(date_str):
-    # date_str = "2026-05-01"
     dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
     return int(time.mktime(dt.timetuple()))
 
@@ -50,18 +47,18 @@ async def handle(request):
     data = await request.json()
 
     guest_name = data.get("name")
-    arrival    = data.get("arrivalDate")   # 2026-05-01
-    departure  = data.get("departureDate") # 2026-05-05
+    arrival    = data.get("arrivalDate")
+    departure  = data.get("departureDate")
     booking_id = data.get("bookingId")
 
     if not (guest_name and arrival and departure and booking_id):
         return web.Response(text="Missing fields", status=400)
 
-    # Start/End für UniFi Access (ganzer Tag)
+    # Start/Endzeit
     start_ts = to_unix(arrival)
-    end_ts   = to_unix(departure) + 86399  # letzter Tag bis 23:59:59
+    end_ts   = to_unix(departure) + 86399  # bis 23:59:59
 
-    # 6-stellige PIN
+    # PIN erzeugen
     pin = "".join(random.choice("0123456789") for _ in range(6))
 
     # -------------------------------
@@ -82,9 +79,9 @@ async def handle(request):
         "start_time": start_ts,
         "end_time": end_ts,
         "visit_reason": "Business",
-        "resources": [],   # keine Tür notwendig
+        "resources": [],
         "pin_code": pin,
-        "access_policy_ids": [ GAESTE_POLICY_ID ]
+        "access_policy_ids": [ACCESS_POLICY_ID]   # ✅ POLICY AUS HA
     }
 
     try:
@@ -100,7 +97,7 @@ async def handle(request):
         return web.Response(text=f"Unifi error: {e}", status=500)
 
     # -------------------------------
-    # PIN nach Smoobu schicken
+    # PIN an Smoobu schicken
     # -------------------------------
     smoobu_headers = {
         "Api-Key": SMOOBU_API_KEY,
