@@ -1,76 +1,179 @@
-# Smoobu UniFi AutoPIN – Home Assistant Add-on
+# ✅ **README.md – Smoobu → UniFi Access AutoPIN (Home Assistant Add-on)**
 
-Automatische Erzeugung eines zeitlich gültigen Türcodes für **UniFi Access** basierend auf neuen Buchungen in **Smoobu**.
+## 🔐 Automatische PIN‑ und Besucher‑Erstellung für UniFi Access & Smoobu
 
-✅ Automatische PIN-Erstellung  
-✅ Automatische Übertragung als *Visitor* in UniFi Access  
-✅ Automatische Rückgabe des Zugangscodes an Smoobu (via Custom Placeholder)  
-✅ Vollständige Integration in Home Assistant Supervisor
+Dieses Add-on erzeugt vollautomatisch für jede neue oder aktualisierte Smoobu‑Buchung:
 
----
+✅ Einen **Visitor** in **UniFi Access**  
+✅ Automatisch gesetzte **PIN‑Codes**  
+✅ Automatische Zuordnung zur gewünschten **Access Policy** (z. B. „Gaeste“)  
+✅ Weitergabe der PIN an Smoobu über den Platzhalter **`[doorPin]`**
 
-## ⚙️ Funktionen
+Alles basierend auf dem offiziellen **UniFi Access Developer API** (Port 12445).
 
-- Bei neuer Smoobu-Buchung über Webhook:
-  - Generiert 6-stelligen PIN
-  - Erzeugt Visitor in UniFi Access API
-  - Schreibt PIN zurück in Smoobu als `[doorPin]`
-- Läuft vollständig lokal (kein Cloud-Dienst nötig)
-- Einfache Konfiguration im Add-on Panel
+***
 
----
+## 🚀 **Features**
 
-## 📂 Add-on Struktur
-smoobu-unifi-autopin/
-├── config.yaml
-├── Dockerfile
-├── run.py
-└── icon.png (optional)
-repository.json
-README.md
+| Feature                                          | Beschreibung                             |
+| ------------------------------------------------ | ---------------------------------------- |
+| ✅ Automatische PIN‑Erzeugung                     | 6‑stellige Codes, je Buchung             |
+| ✅ Vollautomatische Visitor‑Erstellung            | Name, Zeitraum, Bemerkung, PIN           |
+| ✅ Automatische Zuordnung einer Access Policy     | z. B. „Gaeste“                           |
+| ✅ Webhook‑Integration mit Smoobu                 | POST → Add‑on → UniFi Access             |
+| ✅ Rückgabe des PIN an Smoobu                     | via API Custom Placeholder               |
+| ✅ Minimal-Konfiguration in Home Assistant        | nur IP + Token + Policy                  |
+| ✅ Keine Tür‑IDs notwendig                        | Besucher werden ohne Ressourcen angelegt |
+| ✅ Unterstützt lokale UniFi Access Installationen | via <https://IP:12445>                   |
 
+***
 
----
+## 🧩 **Voraussetzungen**
 
-## 🔧 Installation
+Du benötigst:
 
-### 1️⃣ Repository hinzufügen
+*   ✅ Home Assistant (Supervisor / Add-on‑fähig)
+*   ✅ UniFi Access installiert auf deiner UDM‑SE
+*   ✅ API Token aus **Access → Settings → General → Advanced → API Token**
+*   ✅ Smoobu Premium (Webhook‑Unterstützung)
+*   ✅ Eine Access Policy (z. B. „Gaeste“)
 
-In Home Assistant:
+***
 
-**Einstellungen → Add-ons → Add-on Store → Repositories**
+## 🛠️ **Installation**
 
-Füge ein: https://github.com/martin141089/smoobu-unifi-autopin-addon
+1.  Add-on in Home Assistant installieren
+2.  Folgende Felder konfigurieren:
 
----
-
-### 2️⃣ Add-on installieren
-
-- Add-on öffnen: *Smoobu UniFi AutoPIN*
-- "Installieren" drücken
-- Nach Installation: Konfiguration ausfüllen
-
----
-
-## 🛠 Konfiguration
-
-In der Add-on Konfiguration folgende Werte setzen:
-
-| Feld | Beschreibung |
-|------|--------------|
-| `smoobu_api_key` | API-Key aus Smoobu → Einstellungen → Entwickler |
-| `unifi_host` | URL zur UniFi Access API, z. B. `https://192.168.1.5` |
-| `unifi_token` | UniFi Access Developer Token |
-| `webhook_secret` | Eigener geheimer Token für Sicherheit |
-
-Beispiel:
+### ✅ Add-on Konfiguration
 
 ```yaml
-smoobu_api_key: "SMOOBU_API_KEY"
-unifi_host: "https://192.168.1.5"
-unifi_token: "ACCESS_API_TOKEN"
-webhook_secret: "mein-geheimer-webhook-token"
+smoobu_api_key: "DEIN_SMOOBU_API_KEY"
+unifi_host: "192.168.1.1"            # NUR die IP!
+unifi_token: "DEIN_ACCESS_API_TOKEN"
+webhook_secret: "DEIN_GEHEIMES_SECRET"
+access_policy_id: "0519dc46-ae09-4512-bc1d-9f961adcc389"
+```
 
-https://DEINE-HOMEASSISTANT-IP:8099/?secret=DEIN_SECRET
+### Erklärung der Felder
 
+| Feld               | Beschreibung                               |
+| ------------------ | ------------------------------------------ |
+| `smoobu_api_key`   | Dein Smoobu API‑Schlüssel                  |
+| `unifi_host`       | IP-Adresse deiner UDM‑SE (nur IP!)         |
+| `unifi_token`      | API Token aus UniFi Access (nicht aus OS!) |
+| `webhook_secret`   | Freies Secret zur Absicherung              |
+| `access_policy_id` | ID der UniFi Access Policy (z.B. „Gaeste“) |
+
+***
+
+## 🔎 **Access Policy ID herausfinden**
+
+1.  UniFi Access öffnen
+2.  Links: **Access Policies**
+3.  Policy „Gaeste“ öffnen
+4.  Die URL sieht z. B. so aus:
+
+<!---->
+
+    https://unifi.ui.com/.../settings/policies/0519dc46-ae09-4512-bc1d-9f961adcc389
+
+➡️ Diese ID („0519dc46‑…”) trägst du ins Add-on ein
+
+***
+
+## 🔁 **Smoobu konfigurieren**
+
+### Webhook einrichten:
+
+    http://DEINE-HOME-ASSISTANT-IP:8099/?secret=DEIN_SECRET
+
+Ereignisse aktivieren:
+
+*   ✅ Buchung erstellt
+*   ✅ Buchung aktualisiert
+
+### Platzhalter in Nachrichten:
+
+In Smoobu → Nachrichten:
+
+    Ihr Tür-Code lautet: [doorPin]
+
+***
+
+## ✅ **Was passiert bei einer neuen Buchung?**
+
+1.  Smoobu sendet Webhook → Add-on
+2.  Add-on erzeugt
+    *   Visitor in UniFi Access
+    *   Zeitraum = Anreise bis Abreise
+    *   PIN-Code
+    *   Bemerkung mit Buchungsnummer
+    *   Access Policy „Gaeste“
+3.  PIN wird automatisch an Smoobu zurückgeschrieben
+4.  PIN wird in deinen Nachrichten ersetzt
+
+Alles automatisch, ohne Zutun.
+
+***
+
+## ✅ **Status-Ansicht**
+
+Aufruf im Browser:
+
+    http://DEINE-HA-IP:8099/
+
+Zeigt:
+
+*   API‑Endpoint
+*   Secret
+*   Eingestellte Policy
+*   Bestätigung, dass Add‑on läuft
+
+***
+
+## 📦 **run.py – Logik des Add-ons**
+
+Die Datei:
+
+*   parst die Smoobu Daten
+*   setzt PIN
+*   erstellt Visitor
+*   weist die Policy zu
+*   sendet PIN zurück an Smoobu
+*   gibt Erfolgsmeldung zurück
+
+***
+
+## 🧪 Test (manuell)
+
+```powershell
+Invoke-WebRequest -Uri "http://HA-IP:8099/?secret=DEIN_SECRET" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{"name":"Testgast","arrivalDate":"2026-05-01","departureDate":"2026-05-05","bookingId":123}'
+```
+
+Erwartete Ausgabe:
+
+    OK – Visitor + PIN 123456 erstellt
+
+In UniFi Access → Visitors sollte der Gast sichtbar sein.
+
+***
+
+## ✅ Logs anzeigen
+
+Add-on → Protokolle
+
+***
+
+## 🎯 Troubleshooting
+
+| Problem                      | Ursache                       | Lösung                                         |
+| ---------------------------- | ----------------------------- | ---------------------------------------------- |
+| 401 Unauthorized             | falscher Access Token         | Token aus Access → Settings → General erzeugen |
+| Connection Refused           | falscher Host / falscher Port | Host = NUR IP; Port ist fest: 12445            |
+| Visitor erscheint nicht      | Zeitraum = 0                  | run.py setzt nun korrekte Unixzeiten           |
+| PIN kommt nicht in Smoobu an | falscher Placeholder          | `[doorPin]` verwenden                          |
 
