@@ -2,7 +2,6 @@ from aiohttp import web
 import random
 import requests
 import os
-import json
 
 SMOOBU_API_KEY = os.environ.get("SMOOBU_API_KEY")
 UNIFI_HOST     = os.environ.get("UNIFI_HOST")
@@ -10,9 +9,11 @@ UNIFI_TOKEN    = os.environ.get("UNIFI_TOKEN")
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 
 async def handle(request):
+    # Sicherheit: Secret prüfen
     if request.query.get("secret") != WEBHOOK_SECRET:
         return web.Response(text="Unauthorized", status=401)
 
+    # Eingangsdaten vom Webhook lesen
     data = await request.json()
 
     guest_name = data.get("name")
@@ -20,10 +21,10 @@ async def handle(request):
     departure  = data.get("departureDate")
     booking_id = data.get("bookingId")
 
-    # Zufälligen 6-stelligen PIN erzeugen
+    # 1. PIN generieren
     pin = "".join(random.choice("0123456789") for _ in range(6))
 
-    # 1. UniFi Access Visitor erstellen
+    # 2. UniFi Access: Visitor erstellen
     headers = {
         "Authorization": f"Bearer {UNIFI_TOKEN}",
         "Content-Type": "application/json"
@@ -47,7 +48,7 @@ async def handle(request):
     except Exception as e:
         return web.Response(text=f"Unifi error: {e}", status=500)
 
-    # 2. PIN zu Smoobu zurückschicken
+    # 3. PIN an Smoobu zurückgeben (Custom Placeholder)
     smoobu_headers = {
         "Api-Key": SMOOBU_API_KEY,
         "Content-Type": "application/json"
@@ -69,11 +70,10 @@ async def handle(request):
     except Exception as e:
         return web.Response(text=f"Smoobu error: {e}", status=500)
 
-    return web.Response(text=f"OK - PIN {pin} gesetzt", status=200)
+    return web.Response(text=f"OK – PIN {pin} gesetzt", status=200)
 
 
 app = web.Application()
 app.router.add_post("/", handle)
 
 web.run_app(app, host="0.0.0.0", port=8099)
-``
