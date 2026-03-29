@@ -1,0 +1,27 @@
+name: "Smoobu UniFi AutoPIN"
+slug: "smoobu_unifi_autopin"
+version: "1.0.1"
+description: "Automatische PIN-Erstellung für UniFi Access basierend auf Smoobu-Buchungen. von Martin Henschke"
+arch:
+  - amd64
+  - aarch64
+startup: services
+boot: auto
+
+# Wichtig: Lokales Docker-Image bauen
+build: .
+
+ports:
+  8099/tcp: 8099
+
+options:
+  smoobu_api_key: ""
+  unifi_host: ""
+  unifi_token: ""
+  webhook_secret: ""
+
+schema:
+  smoobu_api_key: str
+  unifi_host: str
+  unifi_token: str
+  webhook_secret: str
