@@ -1,7 +1,8 @@
 name: "Smoobu UniFi AutoPIN"
 slug: "smoobu_unifi_autopin"
-version: "1.0.1"
-description: "Automatische PIN-Erstellung für UniFi Access basierend auf Smoobu-Buchungen. von Martin Henschke"
+version: "1.0.2"
+description: "Automatische PIN-Erstellung für UniFi Access basierend auf Smoobu-Buchungen. von Martin Henschke
+https://github.com/martin141089/smoobu-unifi-autopin-addon"
 arch:
   - amd64
   - aarch64
