@@ -3,89 +3,70 @@ import requests
 import json
 import urllib3
 from aiohttp import web
+import datetime
+import time
 
-# SSL-Warnungen für die selbst-signierten Ubiquiti-Zertifikate abschalten
+# SSL-Warnungen für Ubiquiti deaktivieren
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Home Assistant Optionen laden
+# Optionen aus Home Assistant laden
 with open("/data/options.json", "r") as f:
     opts = json.load(f)
 
-# ---------------------------
-# KONSTANTEN – NICHT MEHR ÄNDERN
-# ---------------------------
-
-# UniFi Access API Port ist FIX laut Dokumentation (Port 12445)
-UNIFI_API_PORT = 12445
-
-# Developer API Prefix ist FIX
-UNIFI_API_PREFIX = "/api/v1/developer"
-
-# ---------------------------
-# KONFIGURATION AUS HA
-# ---------------------------
-
 SMOOBU_API_KEY = opts.get("smoobu_api_key")
-UNIFI_IP       = opts.get("unifi_host")            # z.B. "192.168.1.1"
+UNIFI_IP       = opts.get("unifi_host")      # z.B. 192.168.1.1
 UNIFI_TOKEN    = opts.get("unifi_token")
 WEBHOOK_SECRET = opts.get("webhook_secret")
 
-# Vollständiger UniFi Access API HOST
-UNIFI_BASE_URL = f"https://{UNIFI_IP}:{UNIFI_API_PORT}{UNIFI_API_PREFIX}"
+# Fixer API-Port + Developer-Prefix
+UNIFI_BASE = f"https://{UNIFI_IP}:12445/api/v1/developer"
 
+# ----------------------------------------------------
+# ACCESS POLICY ID "Gaeste"
+GAESTE_POLICY_ID = "0519dc46-ae09-4512-bc1d-9f961adcc389"
+# ----------------------------------------------------
 
-# ---------------------------------------------------------
-# GET: Status-Seite für Browser
-# ---------------------------------------------------------
 async def status(request):
     return web.Response(
         text=f"""
-Smoobu UniFi AutoPIN – Status ✔
+UniFi Access AutoPIN läuft ✔
 
-Add-on läuft.
-
-UniFi Access API Base URL:
-{UNIFI_BASE_URL}
-
-Webhook URL:
-http://YOUR-HOMEASSISTANT-IP:8099/?secret={WEBHOOK_SECRET}
-
-Hinweis:
-- Browser = GET -> nur Statusseite
-- Smoobu sendet POST -> löst PIN-Erstellung aus
+API: {UNIFI_BASE}
+Policy: {GAESTE_POLICY_ID}
+Secret: {WEBHOOK_SECRET}
 """,
         content_type="text/plain"
     )
 
+def to_unix(date_str):
+    # date_str = "2026-05-01"
+    dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+    return int(time.mktime(dt.timetuple()))
 
-# ---------------------------------------------------------
-# POST: Webhook Handler
-# ---------------------------------------------------------
 async def handle(request):
-    # ✅ Secret prüfen
     if request.query.get("secret") != WEBHOOK_SECRET:
         return web.Response(text="Unauthorized", status=401)
 
-    try:
-        data = await request.json()
-    except:
-        return web.Response(text="Invalid JSON", status=400)
+    data = await request.json()
 
     guest_name = data.get("name")
-    arrival    = data.get("arrivalDate")
-    departure  = data.get("departureDate")
+    arrival    = data.get("arrivalDate")   # 2026-05-01
+    departure  = data.get("departureDate") # 2026-05-05
     booking_id = data.get("bookingId")
 
     if not (guest_name and arrival and departure and booking_id):
         return web.Response(text="Missing fields", status=400)
 
-    # ✅ PIN generieren
+    # Start/End für UniFi Access (ganzer Tag)
+    start_ts = to_unix(arrival)
+    end_ts   = to_unix(departure) + 86399  # letzter Tag bis 23:59:59
+
+    # 6-stellige PIN
     pin = "".join(random.choice("0123456789") for _ in range(6))
 
-    # ---------------------------------------------------------
-    # ✅ UniFi Access VISITOR erstellen
-    # ---------------------------------------------------------
-
+    # -------------------------------
+    # Visitor anlegen
+    # -------------------------------
     headers = {
         "Authorization": f"Bearer {UNIFI_TOKEN}",
         "Content-Type": "application/json"
@@ -94,15 +75,21 @@ async def handle(request):
     visitor_payload = {
         "first_name": guest_name,
         "last_name": "",
-        "start_time": int(0),   # Access verlangt Unix-Zeit → Dummy, wenn nicht benötigt
-        "end_time": int(0),
-        "resources": [],
-        "pin_code": pin
+        "remarks": f"Smoobu Booking {booking_id}",
+        "mobile_phone": "",
+        "email": "",
+        "visitor_company": "Smoobu Gäste",
+        "start_time": start_ts,
+        "end_time": end_ts,
+        "visit_reason": "Business",
+        "resources": [],   # keine Tür notwendig
+        "pin_code": pin,
+        "access_policy_ids": [ GAESTE_POLICY_ID ]
     }
 
     try:
         r = requests.post(
-            f"{UNIFI_BASE_URL}/visitors",
+            f"{UNIFI_BASE}/visitors",
             headers=headers,
             json=visitor_payload,
             timeout=10,
@@ -112,11 +99,9 @@ async def handle(request):
     except Exception as e:
         return web.Response(text=f"Unifi error: {e}", status=500)
 
-
-    # ---------------------------------------------------------
-    # ✅ PIN an Smoobu zurücksenden
-    # ---------------------------------------------------------
-
+    # -------------------------------
+    # PIN nach Smoobu schicken
+    # -------------------------------
     smoobu_headers = {
         "Api-Key": SMOOBU_API_KEY,
         "Content-Type": "application/json"
@@ -139,14 +124,10 @@ async def handle(request):
     except Exception as e:
         return web.Response(text=f"Smoobu error: {e}", status=500)
 
-    return web.Response(text=f"OK – PIN {pin} gesetzt", status=200)
+    return web.Response(text=f"OK – Visitor + PIN {pin} erstellt", status=200)
 
-
-# ---------------------------------------------------------
-# Webserver starten
-# ---------------------------------------------------------
 app = web.Application()
-app.router.add_get("/", status)      # Browser
-app.router.add_post("/", handle)     # Smoobu Webhook
+app.router.add_get("/", status)
+app.router.add_post("/", handle)
 
 web.run_app(app, host="0.0.0.0", port=8099)
