@@ -1,6 +1,6 @@
 name: "Smoobu UniFi AutoPIN"
 slug: "smoobu_unifi_autopin"
-version: "1.0.4"
+version: "1.0.5"
 description: "Automatische PIN-Erstellung für UniFi Access basierend auf Smoobu-Buchungen. von Martin Henschke
 https://github.com/martin141089/smoobu-unifi-autopin-addon"
 arch:
@@ -20,9 +20,11 @@ options:
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
+  access_policy_id: ""   # ✅ NEU
 
 schema:
   smoobu_api_key: str
   unifi_host: str
   unifi_token: str
   webhook_secret: str
+  access_policy_id: str   # ✅ NEU
