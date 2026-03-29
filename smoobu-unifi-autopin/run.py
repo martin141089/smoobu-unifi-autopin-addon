@@ -4,49 +4,68 @@ import json
 import urllib3
 from aiohttp import web
 
-# SSL-Warnungen ausschalten (wegen UniFi self-signed Zertifikat)
+# SSL-Warnungen für die selbst-signierten Ubiquiti-Zertifikate abschalten
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Optionen aus Home Assistant laden
+# Home Assistant Optionen laden
 with open("/data/options.json", "r") as f:
     opts = json.load(f)
 
+# ---------------------------
+# KONSTANTEN – NICHT MEHR ÄNDERN
+# ---------------------------
+
+# UniFi Access API Port ist FIX laut Dokumentation (Port 12445)
+UNIFI_API_PORT = 12445
+
+# Developer API Prefix ist FIX
+UNIFI_API_PREFIX = "/api/v1/developer"
+
+# ---------------------------
+# KONFIGURATION AUS HA
+# ---------------------------
+
 SMOOBU_API_KEY = opts.get("smoobu_api_key")
-UNIFI_HOST     = opts.get("unifi_host")
+UNIFI_IP       = opts.get("unifi_host")            # z.B. "192.168.1.1"
 UNIFI_TOKEN    = opts.get("unifi_token")
 WEBHOOK_SECRET = opts.get("webhook_secret")
 
+# Vollständiger UniFi Access API HOST
+UNIFI_BASE_URL = f"https://{UNIFI_IP}:{UNIFI_API_PORT}{UNIFI_API_PREFIX}"
+
 
 # ---------------------------------------------------------
-# GET: Statusseite (Browser-Aufruf)
+# GET: Status-Seite für Browser
 # ---------------------------------------------------------
 async def status(request):
     return web.Response(
         text=f"""
-Smoobu UniFi AutoPIN - Status ✔
+Smoobu UniFi AutoPIN – Status ✔
 
 Add-on läuft.
 
+UniFi Access API Base URL:
+{UNIFI_BASE_URL}
+
 Webhook URL:
-http://YOUR-HOMEASSISTANT:8099/?secret={WEBHOOK_SECRET}
+http://YOUR-HOMEASSISTANT-IP:8099/?secret={WEBHOOK_SECRET}
 
 Hinweis:
-- Browser nutzt GET → nur Statusseite
-- Smoobu Webhook nutzt POST → löst PIN-Erstellung aus
+- Browser = GET -> nur Statusseite
+- Smoobu sendet POST -> löst PIN-Erstellung aus
 """,
         content_type="text/plain"
     )
 
 
 # ---------------------------------------------------------
-# POST: Smoobu Webhook Handler
+# POST: Webhook Handler
 # ---------------------------------------------------------
 async def handle(request):
     # ✅ Secret prüfen
     if request.query.get("secret") != WEBHOOK_SECRET:
         return web.Response(text="Unauthorized", status=401)
 
-    # ✅ JSON auslesen
     try:
         data = await request.json()
     except:
@@ -57,35 +76,37 @@ async def handle(request):
     departure  = data.get("departureDate")
     booking_id = data.get("bookingId")
 
-    if not guest_name or not arrival or not departure or not booking_id:
+    if not (guest_name and arrival and departure and booking_id):
         return web.Response(text="Missing fields", status=400)
 
     # ✅ PIN generieren
     pin = "".join(random.choice("0123456789") for _ in range(6))
 
+    # ---------------------------------------------------------
+    # ✅ UniFi Access VISITOR erstellen
+    # ---------------------------------------------------------
 
-    # ---------------------------------------------------------
-    # ✅ UniFi Access Visitor erstellen
-    # ---------------------------------------------------------
     headers = {
         "Authorization": f"Bearer {UNIFI_TOKEN}",
         "Content-Type": "application/json"
     }
 
     visitor_payload = {
-        "full_name": guest_name,
-        "pin": pin,
-        "valid_from": f"{arrival}T15:00:00Z",
-        "valid_until": f"{departure}T11:00:00Z"
+        "first_name": guest_name,
+        "last_name": "",
+        "start_time": int(0),   # Access verlangt Unix-Zeit → Dummy, wenn nicht benötigt
+        "end_time": int(0),
+        "resources": [],
+        "pin_code": pin
     }
 
     try:
         r = requests.post(
-            f"{UNIFI_HOST}/api/v1/visitors",
+            f"{UNIFI_BASE_URL}/visitors",
             headers=headers,
             json=visitor_payload,
             timeout=10,
-            verify=False        # ✅ Wichtig: self-signed SSL erlauben
+            verify=False
         )
         r.raise_for_status()
     except Exception as e:
@@ -93,8 +114,9 @@ async def handle(request):
 
 
     # ---------------------------------------------------------
-    # ✅ PIN an Smoobu zurückgeben
+    # ✅ PIN an Smoobu zurücksenden
     # ---------------------------------------------------------
+
     smoobu_headers = {
         "Api-Key": SMOOBU_API_KEY,
         "Content-Type": "application/json"
@@ -117,7 +139,6 @@ async def handle(request):
     except Exception as e:
         return web.Response(text=f"Smoobu error: {e}", status=500)
 
-
     return web.Response(text=f"OK – PIN {pin} gesetzt", status=200)
 
 
@@ -125,7 +146,7 @@ async def handle(request):
 # Webserver starten
 # ---------------------------------------------------------
 app = web.Application()
-app.router.add_get("/", status)    # ✅ GET für Browser
-app.router.add_post("/", handle)   # ✅ POST für Smoobu
+app.router.add_get("/", status)      # Browser
+app.router.add_post("/", handle)     # Smoobu Webhook
 
 web.run_app(app, host="0.0.0.0", port=8099)
