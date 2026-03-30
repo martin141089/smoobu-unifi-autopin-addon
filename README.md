@@ -1,179 +1,144 @@
-# ✅ **README.md – Smoobu → UniFi Access AutoPIN (Home Assistant Add-on)**
+# 📘 Smoobu UniFi Access AutoPIN
 
-## 🔐 Automatische PIN‑ und Besucher‑Erstellung für UniFi Access & Smoobu
+**Multi‑Wohnungs PIN‑ & Visitor‑Automation für UniFi Access + Smoobu**
 
-Dieses Add-on erzeugt vollautomatisch für jede neue oder aktualisierte Smoobu‑Buchung:
+Dieses Home‑Assistant‑Add-on erlaubt die vollautomatische PIN‑ und Visitor‑Erstellung  
+für UniFi Access basierend auf Smoobu‑Buchungen — Multi‑Standort‑fähig und generisch  
+für beliebige Umgebungen (UDM‑SE, UniFi Access Controller etc.).
 
-✅ Einen **Visitor** in **UniFi Access**  
-✅ Automatisch gesetzte **PIN‑Codes**  
-✅ Automatische Zuordnung zur gewünschten **Access Policy** (z. B. „Gaeste“)  
-✅ Weitergabe der PIN an Smoobu über den Platzhalter **`[doorPin]`**
+Es ist **komplett sicher**, denn:
 
-Alles basierend auf dem offiziellen **UniFi Access Developer API** (Port 12445).
-
-***
-
-## 🚀 **Features**
-
-| Feature                                          | Beschreibung                             |
-| ------------------------------------------------ | ---------------------------------------- |
-| ✅ Automatische PIN‑Erzeugung                     | 6‑stellige Codes, je Buchung             |
-| ✅ Vollautomatische Visitor‑Erstellung            | Name, Zeitraum, Bemerkung, PIN           |
-| ✅ Automatische Zuordnung einer Access Policy     | z. B. „Gaeste“                           |
-| ✅ Webhook‑Integration mit Smoobu                 | POST → Add‑on → UniFi Access             |
-| ✅ Rückgabe des PIN an Smoobu                     | via API Custom Placeholder               |
-| ✅ Minimal-Konfiguration in Home Assistant        | nur IP + Token + Policy                  |
-| ✅ Keine Tür‑IDs notwendig                        | Besucher werden ohne Ressourcen angelegt |
-| ✅ Unterstützt lokale UniFi Access Installationen | via <https://IP:12445>                   |
+✅ Alle geheimen Daten werden nur lokal im Home Assistant eingegeben  
+✅ Keine IDs, Tokens oder IPs liegen im GitHub‑Repo  
+✅ Alle Zugänge werden ausschließlich lokal über HTTPS abgefragt  
+✅ Auto‑Scan der Türgruppen erfolgt lokal und manuell
 
 ***
 
-## 🧩 **Voraussetzungen**
+# ✅ Funktionen
 
-Du benötigst:
-
-*   ✅ Home Assistant (Supervisor / Add-on‑fähig)
-*   ✅ UniFi Access installiert auf deiner UDM‑SE
-*   ✅ API Token aus **Access → Settings → General → Advanced → API Token**
-*   ✅ Smoobu Premium (Webhook‑Unterstützung)
-*   ✅ Eine Access Policy (z. B. „Gaeste“)
+*   Automatische Visitor‑Erstellung in UniFi Access
+*   Automatische PIN‑Generierung für Gäste
+*   Automatische Zuordnung einer Access Policy
+*   Multi‑Wohnungs‑Support (1–4 Apartments)
+*   Apartment‑Routing basierend auf Smoobu Property Name
+*   Lokaler Tür‑Scan (Door‑Groups + Doors)
+*   Unterstützung für Umlaute & Namens‑Trennung
+*   Keine sensiblen Daten im Code
 
 ***
 
-## 🛠️ **Installation**
+# ✅ Installation
 
-1.  Add-on in Home Assistant installieren
-2.  Folgende Felder konfigurieren:
+1.  Repository hinzufügen
+2.  Add‑on installieren
+3.  Add‑on **nicht sofort starten**
+4.  Konfiguration öffnen
 
-### ✅ Add-on Konfiguration
+***
+
+# ✅ Konfiguration (`config.yaml`)
+
+Das Add-on bietet dynamische Wohnungsunterstützung:
+
+*   Anzahl der Wohnungen (1–4)
+*   Pro Wohnung:
+    *   Smoobu‑Wohnungsname
+    *   Access Policy ID
+    *   Door Group ID
 
 ```yaml
-smoobu_api_key: "DEIN_SMOOBU_API_KEY"
-unifi_host: "192.168.1.1"            # NUR die IP!
-unifi_token: "DEIN_ACCESS_API_TOKEN"
-webhook_secret: "DEIN_GEHEIMES_SECRET"
-access_policy_id: "0519dc46-ae09-4512-bc1d-9f961adcc389"
+options:
+  smoobu_api_key: ""
+  unifi_host: ""
+  unifi_token: ""
+  webhook_secret: ""
+
+  homes_count: 1
+
+  home1_name: ""
+  home1_policy_id: ""
+  home1_door_group_id: ""
+
+  home2_name: ""
+  home2_policy_id: ""
+  home2_door_group_id: ""
+
+  home3_name: ""
+  home3_policy_id: ""
+  home3_door_group_id: ""
+
+  home4_name: ""
+  home4_policy_id: ""
+  home4_door_group_id: ""
 ```
 
-### Erklärung der Felder
+***
 
-| Feld               | Beschreibung                               |
-| ------------------ | ------------------------------------------ |
-| `smoobu_api_key`   | Dein Smoobu API‑Schlüssel                  |
-| `unifi_host`       | IP-Adresse deiner UDM‑SE (nur IP!)         |
-| `unifi_token`      | API Token aus UniFi Access (nicht aus OS!) |
-| `webhook_secret`   | Freies Secret zur Absicherung              |
-| `access_policy_id` | ID der UniFi Access Policy (z.B. „Gaeste“) |
+# ✅ Door‑Scan verwenden
+
+Das Add-on enthält eine lokale Seite zur Erkennung aller Türen & Türgruppen.
+
+### Browser öffnen:
+
+    http://HOMEASSISTANT-IP:8098
+
+### Ausgabe Beispiel:
+
+    === TÜRGRUPPE ===
+    NAME: EG Wohnung
+    ID:   5c496423-...
+
+       - TÜR: Eingang EG → 6ff875d2-...
+
+    === TÜRGRUPPE ===
+    NAME: DG Wohnung
+    ID:   e311ca94-...
+       - TÜR: Eingang DG → d5573467-...
+
+### Diese IDs trägst du im Add-on ein:
+
+*   `home1_door_group_id:`
+*   `home2_door_group_id:`
+*   …
 
 ***
 
-## 🔎 **Access Policy ID herausfinden**
+# ✅ Smoobu Webhook konfigurieren
 
-1.  UniFi Access öffnen
-2.  Links: **Access Policies**
-3.  Policy „Gaeste“ öffnen
-4.  Die URL sieht z. B. so aus:
+Webhook URL:
 
-<!---->
+    http://HOMEASSISTANT-IP:8099/?secret=DEIN_SECRET
 
-    https://unifi.ui.com/.../settings/policies/0519dc46-ae09-4512-bc1d-9f961adcc389
+Events aktivieren:
 
-➡️ Diese ID („0519dc46‑…”) trägst du ins Add-on ein
+*   Buchung erstellt
+*   Buchung geändert
 
-***
+Platzhalter in Nachrichten:
 
-## 🔁 **Smoobu konfigurieren**
-
-### Webhook einrichten:
-
-    http://DEINE-HOME-ASSISTANT-IP:8099/?secret=DEIN_SECRET
-
-Ereignisse aktivieren:
-
-*   ✅ Buchung erstellt
-*   ✅ Buchung aktualisiert
-
-### Platzhalter in Nachrichten:
-
-In Smoobu → Nachrichten:
-
-    Ihr Tür-Code lautet: [doorPin]
+    Tür-PIN: [doorPin]
 
 ***
 
-## ✅ **Was passiert bei einer neuen Buchung?**
+# ✅ Run Mode
 
-1.  Smoobu sendet Webhook → Add-on
-2.  Add-on erzeugt
-    *   Visitor in UniFi Access
-    *   Zeitraum = Anreise bis Abreise
-    *   PIN-Code
-    *   Bemerkung mit Buchungsnummer
-    *   Access Policy „Gaeste“
-3.  PIN wird automatisch an Smoobu zurückgeschrieben
-4.  PIN wird in deinen Nachrichten ersetzt
+Nach Abschluss aller Konfigurationen:
 
-Alles automatisch, ohne Zutun.
+*   Add-on starten
+*   Gäste erhalten automatisch PINs
+*   Visitors erscheinen im UniFi Access
+*   Türgruppen werden korrekt zugeordnet
 
 ***
 
-## ✅ **Status-Ansicht**
+# ✅ Dateistruktur des Add-ons
 
-Aufruf im Browser:
-
-    http://DEINE-HA-IP:8099/
-
-Zeigt:
-
-*   API‑Endpoint
-*   Secret
-*   Eingestellte Policy
-*   Bestätigung, dass Add‑on läuft
+    /
+    ├── config.yaml
+    ├── run.py
+    ├── scan.py
+    ├── README.md
+    └── Dockerfile
 
 ***
-
-## 📦 **run.py – Logik des Add-ons**
-
-Die Datei:
-
-*   parst die Smoobu Daten
-*   setzt PIN
-*   erstellt Visitor
-*   weist die Policy zu
-*   sendet PIN zurück an Smoobu
-*   gibt Erfolgsmeldung zurück
-
-***
-
-## 🧪 Test (manuell)
-
-```powershell
-Invoke-WebRequest -Uri "http://HA-IP:8099/?secret=DEIN_SECRET" `
-  -Method POST `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body '{"name":"Testgast","arrivalDate":"2026-05-01","departureDate":"2026-05-05","bookingId":123}'
-```
-
-Erwartete Ausgabe:
-
-    OK – Visitor + PIN 123456 erstellt
-
-In UniFi Access → Visitors sollte der Gast sichtbar sein.
-
-***
-
-## ✅ Logs anzeigen
-
-Add-on → Protokolle
-
-***
-
-## 🎯 Troubleshooting
-
-| Problem                      | Ursache                       | Lösung                                         |
-| ---------------------------- | ----------------------------- | ---------------------------------------------- |
-| 401 Unauthorized             | falscher Access Token         | Token aus Access → Settings → General erzeugen |
-| Connection Refused           | falscher Host / falscher Port | Host = NUR IP; Port ist fest: 12445            |
-| Visitor erscheint nicht      | Zeitraum = 0                  | run.py setzt nun korrekte Unixzeiten           |
-| PIN kommt nicht in Smoobu an | falscher Placeholder          | `[doorPin]` verwenden                          |
-
