@@ -6,39 +6,63 @@ from aiohttp import web
 import datetime
 import time
 
-# SSL-Warnungen für Ubiquiti deaktivieren
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+urllib3.disable_warnings()
 
-# Optionen aus Home Assistant laden
+# Konfiguration laden
 with open("/data/options.json", "r") as f:
     opts = json.load(f)
 
-SMOOBU_API_KEY = opts.get("smoobu_api_key")
-UNIFI_IP       = opts.get("unifi_host")      # z.B. 192.168.1.1
-UNIFI_TOKEN    = opts.get("unifi_token")
-WEBHOOK_SECRET = opts.get("webhook_secret")
-ACCESS_POLICY_ID = opts.get("access_policy_id")   # ✅ NEUE OPTION
+SMOOBU_API_KEY = opts["smoobu_api_key"]
+UNIFI_IP = opts["unifi_host"]
+UNIFI_TOKEN = opts["unifi_token"]
+WEBHOOK_SECRET = opts["webhook_secret"]
 
-# Fixer API-Port + Developer-Prefix
+HOMES_COUNT = opts["homes_count"]
+
+# Multi-Standort Konfiguration
+homes = []
+
+for i in range(1, HOMES_COUNT + 1):
+    homes.append({
+        "name": opts.get(f"home{i}_name", "").strip(),
+        "policy": opts.get(f"home{i}_policy_id", "").strip(),
+        "door_group": opts.get(f"home{i}_door_group_id", "").strip(),
+    })
+
 UNIFI_BASE = f"https://{UNIFI_IP}:12445/api/v1/developer"
 
-async def status(request):
-    return web.Response(
-        text=f"""
-UniFi Access AutoPIN läuft ✔
-
-API: {UNIFI_BASE}
-Policy: {ACCESS_POLICY_ID}
-Secret: {WEBHOOK_SECRET}
-
-Alles funktioniert.
-""",
-        content_type="text/plain"
-    )
 
 def to_unix(date_str):
     dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
     return int(time.mktime(dt.timetuple()))
+
+
+def split_name(name):
+    p = name.split(" ")
+    if len(p) == 1:
+        return p[0], ""
+    return p[0], " ".join(p[1:])
+
+
+def normalize(name):
+    r = {"ä":"ae","ö":"oe","ü":"ue","Ä":"Ae","Ö":"Oe","Ü":"Ue","ß":"ss"}
+    for k,v in r.items(): name = name.replace(k,v)
+    return name
+
+
+def find_home(property_name):
+    for h in homes:
+        if h["name"].lower() == property_name.lower():
+            return h
+    return None
+
+
+async def status(request):
+    out = "UniFi AutoPIN Add-on läuft ✅\n\nKonfigurierte Wohnungen:\n\n"
+    for h in homes:
+        out += f"- {h['name']} → DoorGroup: {h['door_group']} → Policy: {h['policy']}\n"
+    return web.Response(text=out)
+
 
 async def handle(request):
     if request.query.get("secret") != WEBHOOK_SECRET:
@@ -46,42 +70,51 @@ async def handle(request):
 
     data = await request.json()
 
-    guest_name = data.get("name")
-    arrival    = data.get("arrivalDate")
-    departure  = data.get("departureDate")
-    booking_id = data.get("bookingId")
+    # Smoobu Felder
+    raw_guest = data["name"]
+    property_name = data["propertyName"]
+    arrival = data["arrivalDate"]
+    departure = data["departureDate"]
+    booking_id = data["bookingId"]
 
-    if not (guest_name and arrival and departure and booking_id):
-        return web.Response(text="Missing fields", status=400)
+    # Wohnung finden
+    home = find_home(property_name)
+    if not home:
+        return web.Response(text=f"ERROR: No mapping for apartment '{property_name}'", status=500)
 
-    # Start/Endzeit
+    # Namen
+    guest = normalize(raw_guest)
+    first, last = split_name(guest)
+
+    # Zeitraum
     start_ts = to_unix(arrival)
-    end_ts   = to_unix(departure) + 86399  # bis 23:59:59
+    end_ts = to_unix(departure) + 86399
 
-    # PIN erzeugen
+    # PIN
     pin = "".join(random.choice("0123456789") for _ in range(6))
 
-    # -------------------------------
-    # Visitor anlegen
-    # -------------------------------
-    headers = {
-        "Authorization": f"Bearer {UNIFI_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
+    # Visitor-Daten
     visitor_payload = {
-        "first_name": guest_name,
-        "last_name": "",
+        "first_name": first,
+        "last_name": last,
         "remarks": f"Smoobu Booking {booking_id}",
-        "mobile_phone": "",
-        "email": "",
-        "visitor_company": "Smoobu Gäste",
+        "visitor_company": property_name,
         "start_time": start_ts,
         "end_time": end_ts,
         "visit_reason": "Business",
-        "resources": [],
+        "resources": [
+            {
+                "id": home["door_group"],
+                "type": "door_group"
+            }
+        ],
         "pin_code": pin,
-        "access_policy_ids": [ACCESS_POLICY_ID]   # ✅ POLICY AUS HA
+        "access_policy_ids": [home["policy"]]
+    }
+
+    headers = {
+        "Authorization": f"Bearer {UNIFI_TOKEN}",
+        "Content-Type": "application/json; charset=utf-8"
     }
 
     try:
@@ -94,34 +127,25 @@ async def handle(request):
         )
         r.raise_for_status()
     except Exception as e:
-        return web.Response(text=f"Unifi error: {e}", status=500)
+        return web.Response(text=f"UNIFI ERROR: {e}", status=500)
 
-    # -------------------------------
-    # PIN an Smoobu schicken
-    # -------------------------------
-    smoobu_headers = {
-        "Api-Key": SMOOBU_API_KEY,
-        "Content-Type": "application/json"
-    }
-
-    placeholder_payload = {
-        "bookingId": booking_id,
-        "placeholder": "doorPin",
-        "value": pin
-    }
-
+    # PIN an Smoobu senden
     try:
-        r2 = requests.post(
+        requests.post(
             "https://api.smoobu.com/v1/custom-placeholders",
-            headers=smoobu_headers,
-            json=placeholder_payload,
+            headers={"Api-Key": SMOOBU_API_KEY, "Content-Type": "application/json"},
+            json={
+                "bookingId": booking_id,
+                "placeholder": "doorPin",
+                "value": pin
+            },
             timeout=10
         )
-        r2.raise_for_status()
-    except Exception as e:
-        return web.Response(text=f"Smoobu error: {e}", status=500)
+    except:
+        pass
 
-    return web.Response(text=f"OK – Visitor + PIN {pin} erstellt", status=200)
+    return web.Response(text=f"OK – Visitor {first} {last}, PIN {pin}, Wohnung: {property_name}", status=200)
+
 
 app = web.Application()
 app.router.add_get("/", status)
