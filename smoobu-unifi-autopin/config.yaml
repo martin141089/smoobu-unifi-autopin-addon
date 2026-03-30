@@ -1,5 +1,5 @@
 name: "Smoobu UniFi Access AutoPIN"
-version: "2.0.0"
+version: "2.1.0"
 slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 startup: services
@@ -7,41 +7,53 @@ boot: auto
 host_network: true
 
 options:
-  mode: "setup"          # setup | run
   smoobu_api_key: ""
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
-  homes_count: 1         # 1-4 Wohnungen
+
+  homes_count: 1          # Anzahl Wohnungen (1-4)
+
+  # Wohnung 1
   home1_name: ""
-  home2_name: ""
-  home3_name: ""
-  home4_name: ""
-  home1_door_group_id: ""
-  home2_door_group_id: ""
-  home3_door_group_id: ""
-  home4_door_group_id: ""
   home1_policy_id: ""
+  home1_door_group_id: ""
+
+  # Wohnung 2
+  home2_name: ""
   home2_policy_id: ""
+  home2_door_group_id: ""
+
+  # Wohnung 3
+  home3_name: ""
   home3_policy_id: ""
+  home3_door_group_id: ""
+
+  # Wohnung 4
+  home4_name: ""
   home4_policy_id: ""
+  home4_door_group_id: ""
 
 schema:
-  mode: str
   smoobu_api_key: str
   unifi_host: str
   unifi_token: str
   webhook_secret: str
+
   homes_count: int
+
   home1_name: str?
-  home2_name: str?
-  home3_name: str?
-  home4_name: str?
-  home1_door_group_id: str?
-  home2_door_group_id: str?
-  home3_door_group_id: str?
-  home4_door_group_id: str?
   home1_policy_id: str?
+  home1_door_group_id: str?
+
+  home2_name: str?
   home2_policy_id: str?
+  home2_door_group_id: str?
+
+  home3_name: str?
   home3_policy_id: str?
+  home3_door_group_id: str?
+
+  home4_name: str?
   home4_policy_id: str?
+  home4_door_group_id: str?
