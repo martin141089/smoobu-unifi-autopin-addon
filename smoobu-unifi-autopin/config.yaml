@@ -2,6 +2,8 @@ name: "Smoobu UniFi Access AutoPIN"
 version: "2.1.0"
 slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
+url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
+
 startup: services
 boot: auto
 host_network: true
@@ -11,8 +13,14 @@ options:
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
+  homes_count: 1
 
-  homes_count: 1          # Anzahl Wohnungen (1-4)
+schema:
+  smoobu_api_key: str
+  unifi_host: str
+  unifi_token: str
+  webhook_secret: str
+  homes_count: int
 
   # Wohnung 1
   home1_name: ""
