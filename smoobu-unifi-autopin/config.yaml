@@ -1,7 +1,7 @@
 name: "Smoobu UniFi Access AutoPIN"
-version: "2.1.0"
+version: "2.1.1"
 slug: "smoobu_unifi_autopin"
-description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
+description: "Multi-Standort PIN- + Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
 
 startup: services
