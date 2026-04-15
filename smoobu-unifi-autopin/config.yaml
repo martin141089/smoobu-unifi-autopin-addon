@@ -4,6 +4,10 @@ slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
 
+arch:
+  - amd64
+  - aarch64
+
 startup: services
 boot: auto
 host_network: true
@@ -51,6 +55,3 @@ schema:
   home3_door_group_id: str?
 
   home4_name: str?
-  home4_policy_id: str?
-  home4_door_group_id: str?
-``
