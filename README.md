@@ -81,7 +81,7 @@ Das Add-on enthält eine lokale Seite zur Erkennung aller Türen & Türgruppen.
 
 ### Browser öffnen:
 
-    http://HOMEASSISTANT-IP:8098
+    http://HOMEASSISTANT-IP:8099/scan
 
 ### Ausgabe Beispiel:
 
@@ -137,7 +137,6 @@ Nach Abschluss aller Konfigurationen:
     /
     ├── config.yaml
     ├── run.py
-    ├── scan.py
     ├── README.md
     └── Dockerfile
 
