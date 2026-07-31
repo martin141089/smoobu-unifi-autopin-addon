@@ -180,6 +180,38 @@ async def scan(request):
     return web.Response(text=text, content_type="text/plain")
 
 
+async def policies(request):
+    """Listet Access Policies auf (Endpunkt-Name ist in der UniFi-Access-Doku
+    nicht eindeutig belegt - probiert mehrere gaengige Kandidaten durch)."""
+    headers = {
+        "Authorization": f"Bearer {UNIFI_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    candidates = ["/access_policies", "/policies"]
+    results = []
+
+    for path in candidates:
+        try:
+            r = requests.get(
+                f"{UNIFI_BASE}{path}",
+                headers=headers,
+                verify=False,
+                timeout=10
+            )
+            results.append(f"--- {path} -> HTTP {r.status_code} ---")
+            if r.status_code == 200:
+                data = r.json()
+                for item in data.get("data", []):
+                    results.append(f"NAME: {item.get('name')}   ID: {item.get('id')}")
+            else:
+                results.append(r.text[:300])
+        except Exception as e:
+            results.append(f"--- {path} -> Fehler: {e} ---")
+
+    return web.Response(text="\n".join(results), content_type="text/plain")
+
+
 async def handle(request):
     if request.query.get("secret") != WEBHOOK_SECRET:
         return web.Response(text="Unauthorized", status=401)
@@ -254,6 +286,7 @@ async def handle(request):
 app = web.Application()
 app.router.add_get("/", status)
 app.router.add_get("/scan", scan)
+app.router.add_get("/policies", policies)
 app.router.add_post("/", handle)
 
 web.run_app(app, host="0.0.0.0", port=8099)
