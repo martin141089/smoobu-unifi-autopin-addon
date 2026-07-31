@@ -216,14 +216,29 @@ async def handle(request):
     if request.query.get("secret") != WEBHOOK_SECRET:
         return web.Response(text="Unauthorized", status=401)
 
-    data = await request.json()
+    payload = await request.json()
 
-    # Smoobu Felder
-    raw_guest = data["name"]
-    property_name = data["propertyName"]
-    arrival = data["arrivalDate"]
-    departure = data["departureDate"]
-    booking_id = data["bookingId"]
+    # Smoobu schickt an dieselbe Webhook-URL ALLE Ereignistypen (Buchung neu/
+    # geaendert/storniert, Preis-/Verfuegbarkeits-Updates, neue Nachrichten, ...),
+    # unterschieden nur ueber "action". Es gibt in Smoobu keine Checkbox, um
+    # einzelne Event-Typen ab-/anzuwaehlen - das muss hier gefiltert werden.
+    # https://docs.smoobu.com/#webhooks
+    action = payload.get("action")
+    if action not in ("newReservation", "updateReservation"):
+        return web.Response(text=f"Ignoriert (action={action})", status=200)
+
+    data = payload.get("data", {}) or {}
+    apartment = data.get("apartment", {}) or {}
+
+    # Smoobu Felder (echtes Webhook-Format, verschachtelt unter "data")
+    raw_guest = data.get("guest-name", "")
+    property_name = apartment.get("name", "")
+    arrival = data.get("arrival")
+    departure = data.get("departure")
+    booking_id = data.get("id")
+
+    if not (raw_guest and property_name and arrival and departure and booking_id):
+        return web.Response(text=f"ERROR: Unvollstaendiges Payload: {data}", status=400)
 
     # Wohnung finden
     home = find_home(property_name)
