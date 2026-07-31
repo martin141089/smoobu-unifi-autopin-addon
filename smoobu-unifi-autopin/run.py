@@ -137,7 +137,47 @@ async def status(request):
     out = "UniFi AutoPIN Add-on läuft ✅\n\nKonfigurierte Wohnungen:\n\n"
     for h in homes:
         out += f"- {h['name']} → DoorGroup: {h['door_group']} → Policy: {h['policy']}\n"
+    out += "\nTürgruppen-Scan: /scan\n"
     return web.Response(text=out)
+
+
+async def scan(request):
+    """Listet alle UniFi Access Türgruppen + Türen auf (ersetzt das nie gestartete
+    scan.py / Port 8098 - lief im Dockerfile nie mit, siehe CMD)."""
+    headers = {
+        "Authorization": f"Bearer {UNIFI_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        r = requests.get(
+            f"{UNIFI_BASE}/door_groups/topology",
+            headers=headers,
+            verify=False,
+            timeout=10
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        return web.Response(text=f"Fehler beim Abruf: {e}", status=500)
+
+    output = ["Gefundene Türgruppen & Türen:\n"]
+
+    for group in data.get("data", []):
+        group_id = group.get("id")
+        group_name = group.get("name")
+        output.append("\n=== TÜRGRUPPE ===")
+        output.append(f"NAME: {group_name}")
+        output.append(f"ID:   {group_id}")
+
+        for topo in group.get("resource_topologies", []):
+            for door in topo.get("resources", []):
+                door_id = door.get("id")
+                door_name = door.get("name")
+                output.append(f"   - TÜR: {door_name} → {door_id}")
+
+    text = "\n".join(output)
+    return web.Response(text=text, content_type="text/plain")
 
 
 async def handle(request):
@@ -213,6 +253,7 @@ async def handle(request):
 
 app = web.Application()
 app.router.add_get("/", status)
+app.router.add_get("/scan", scan)
 app.router.add_post("/", handle)
 
 web.run_app(app, host="0.0.0.0", port=8099)
