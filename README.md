@@ -33,12 +33,34 @@ Es ist **komplett sicher**, denn:
 
 ***
 
+# ✅ Voraussetzungen
+
+Bevor du startest, halte Folgendes bereit:
+
+*   **UniFi Access:** IP/Hostname des Controllers sowie ein API‑Token
+    (UniFi Access → Einstellungen → Sicherheit → **Erweiterte API-Einstellungen** → API‑Token erstellen)
+*   **Smoobu:** `smoobu_api_key` **und** `smoobu_api_secret`
+    (Smoobu → Einstellungen → **API**)
+*   Ein selbst gewähltes **Webhook‑Secret** (beliebiger, ausreichend langer Zufallsstring)
+*   Die **exakten Namen deiner Wohnungen in Smoobu** (Property Name) — dieser Name muss
+    1:1 in `homeN_name` eingetragen werden, da darüber die Zuordnung erfolgt
+
+***
+
 # ✅ Installation
 
-1.  Repository hinzufügen
-2.  Add‑on installieren
-3.  Add‑on **nicht sofort starten**
-4.  Konfiguration öffnen
+1.  In Home Assistant zu **Einstellungen → Add-ons → Add-on Store** wechseln
+2.  Oben rechts auf die drei Punkte → **Repositories** klicken und folgende URL hinzufügen:
+
+        https://github.com/martin141089/smoobu-unifi-autopin-addon
+
+3.  Das Add-on **„Smoobu UniFi Access AutoPIN“** in der Liste suchen und **installieren**
+4.  Add‑on **noch nicht starten** — zuerst die Konfiguration ausfüllen (siehe unten)
+5.  Konfiguration öffnen, alle Werte aus „Voraussetzungen“ eintragen, speichern
+6.  Add‑on **starten**
+7.  Türgruppen‑ und Policy‑IDs über `/scan` bzw. `/policies` ermitteln (siehe unten),
+    in die Konfiguration nachtragen und Add‑on **neu starten**
+8.  Smoobu‑Webhook einrichten (siehe unten)
 
 ***
 
