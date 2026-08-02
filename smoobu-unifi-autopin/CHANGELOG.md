@@ -2,6 +2,22 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.0.1]
+
+### Hinzugefügt
+- `DOCS.md` und `CHANGELOG.md` liegen jetzt zusätzlich im Add-on-Ordner
+  (`smoobu-unifi-autopin/`), da Home Assistant Dokumentation und Changelog nur von dort
+  liest, nicht vom Repo-Root. Dadurch werden Dokumentation und Changelog jetzt korrekt in
+  der Add-on-Übersicht angezeigt.
+- Installationsbeschreibung um einen „Voraussetzungen“-Abschnitt (wo man UniFi-API-Token
+  und Smoobu-API-Key/-Secret findet) sowie die genaue Ersteinrichtungs-Reihenfolge ergänzt.
+
+### Sonstiges
+- Repository-Struktur bereinigt: fortan gibt es nur noch einen dauerhaften `main`-Branch
+  statt eines nach der jeweiligen Add-on-Version benannten Branches (zuvor `2.1.1`), um
+  Verwechslungen zwischen Branch-Name und Add-on-Version zu vermeiden. Alte, nicht mehr
+  benötigte Branches und Tags wurden entfernt.
+
 ## [3.0.0]
 
 ### Geändert
