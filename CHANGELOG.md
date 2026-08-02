@@ -6,6 +6,15 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.7.2]
+
+### Behoben
+- **Nuki-Codeanlage schlug mit `500, message='Server Error'` fehl.** Zwei Ursachen:
+  - Nuki erwartet das Feld `smartlockIds` als **Array**, nicht `smartlockId` als
+    Einzelwert.
+  - Der `name` im Code ist auf ca. 20 Zeichen begrenzt; unsere bisherigen Texte waren
+    deutlich länger und wurden jetzt auf 20 Zeichen gekürzt.
+
 ## [3.7.1]
 
 ### Behoben

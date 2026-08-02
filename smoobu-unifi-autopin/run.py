@@ -173,14 +173,14 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     """Legt einen befristeten Keypad-Code auf einem Nuki Smart Lock an.
 
     Erfordert ein physisches Nuki Keypad am Smart Lock - ohne Keypad kann kein Code
-    eingegeben werden. type 13 = Keypad-Code. Format/Endpoint gemaess Nuki Web API
-    Doku + Community-Beispielen (https://developer.nuki.io/t/web-api-example-manage-
-    pin-codes-for-your-nuki-keypad/54) - nicht gegen einen echten Account getestet,
-    bitte nach dem ersten Einsatz verifizieren.
+    eingegeben werden. type 13 = Keypad-Code. "smartlockIds" ist ein Array (nicht
+    "smartlockId" als Einzelwert) und "name" ist auf ca. 20 Zeichen begrenzt - beides
+    gemaess einem geloesten Nuki-Forum-Thread mit funktionierendem Beispiel-Body
+    (https://developer.nuki.io/t/422-error-when-creating-type-13-authorization-via-web-api-keypad-2/35593).
     """
     body = {
-        "smartlockId": _parse_nuki_smartlock_id(smartlock_id),
-        "name": name,
+        "smartlockIds": [_parse_nuki_smartlock_id(smartlock_id)],
+        "name": name[:20],
         "code": int(pin),
         "type": 13,
         "allowedFromDate": _iso_millis_utc(start_ts),
