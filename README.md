@@ -56,6 +56,8 @@ Bevor du startest, halte Folgendes bereit:
 *   Ein selbst gewähltes **Webhook‑Secret** (beliebiger, ausreichend langer Zufallsstring)
 *   Die **exakten Namen deiner Wohnungen in Smoobu** (Property Name) — dieser Name muss
     1:1 in `homeN_name` eingetragen werden, da darüber die Zuordnung erfolgt
+*   Optional: eine **Admin-E-Mail-Adresse** (`admin_email`) als Kontaktadresse für alle in
+    UniFi Access angelegten Visitoren
 
 ***
 
@@ -98,6 +100,7 @@ options:
   unifi_token: ""
   webhook_secret: ""
   nuki_api_token: ""
+  admin_email: ""
 
   homes_count: 1
 
@@ -121,6 +124,12 @@ options:
   home4_door_group_id: ""
   home4_nuki_smartlock_id: ""
 ```
+
+**Wichtig seit Version 3.8:** `admin_email` ist optional und wird bei UniFi‑Access‑Visitoren
+(automatisch per Webhook wie auch manuell im Dashboard angelegt) im `email`‑Feld hinterlegt,
+damit dort ein fester Ansprechpartner statt der (bei Smoobu-Buchungen nicht zuverlässig
+vorhandenen) Gäste‑E‑Mail sichtbar ist. Bei Nuki gibt es für Keypad-Codes technisch kein
+vergleichbares Feld, daher bleibt `admin_email` dort ohne Wirkung.
 
 **Wichtig seit Version 3.7:** `nuki_api_token` sowie `homeN_nuki_smartlock_id` sind komplett
 optional. Eine Wohnung kann nur UniFi, nur Nuki, oder beides gleichzeitig nutzen (z.&nbsp;B.
