@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.6.1]
+
+### Geändert
+- `panel_admin: false` gesetzt - der „AutoPIN Dashboard“-Menüpunkt in der HA-Seitenleiste
+  ist jetzt für alle Benutzer sichtbar, nicht nur für Administratoren.
+
 ## [3.6.0]
 
 ### Geändert
