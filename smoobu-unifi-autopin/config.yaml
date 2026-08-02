@@ -1,5 +1,5 @@
 name: "Smoobu UniFi Access AutoPIN"
-version: "3.6.1"
+version: "3.7.0"
 slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
@@ -20,7 +20,7 @@ ingress: true
 ingress_port: 8100
 panel_admin: false
 panel_icon: mdi:key-variant
-panel_title: "AutoPIN Dashboard"
+panel_title: "FeWo-Tür-PIN"
 
 options:
   smoobu_api_key: ""
@@ -28,23 +28,28 @@ options:
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
+  nuki_api_token: ""
   homes_count: 1
 
   home1_name: ""
   home1_policy_id: ""
   home1_door_group_id: ""
+  home1_nuki_smartlock_id: ""
 
   home2_name: ""
   home2_policy_id: ""
   home2_door_group_id: ""
+  home2_nuki_smartlock_id: ""
 
   home3_name: ""
   home3_policy_id: ""
   home3_door_group_id: ""
+  home3_nuki_smartlock_id: ""
 
   home4_name: ""
   home4_policy_id: ""
   home4_door_group_id: ""
+  home4_nuki_smartlock_id: ""
 
 schema:
   smoobu_api_key: str
@@ -52,20 +57,25 @@ schema:
   unifi_host: str
   unifi_token: str
   webhook_secret: str
+  nuki_api_token: str?
   homes_count: int
 
   home1_name: str?
   home1_policy_id: str?
   home1_door_group_id: str?
+  home1_nuki_smartlock_id: str?
 
   home2_name: str?
   home2_policy_id: str?
   home2_door_group_id: str?
+  home2_nuki_smartlock_id: str?
 
   home3_name: str?
   home3_policy_id: str?
   home3_door_group_id: str?
+  home3_nuki_smartlock_id: str?
 
   home4_name: str?
   home4_policy_id: str?
   home4_door_group_id: str?
+  home4_nuki_smartlock_id: str?

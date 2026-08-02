@@ -37,9 +37,12 @@ SMOOBU_API_SECRET = opts["smoobu_api_secret"]
 UNIFI_IP = opts["unifi_host"]
 UNIFI_TOKEN = opts["unifi_token"]
 WEBHOOK_SECRET = opts["webhook_secret"]
+NUKI_API_TOKEN = opts.get("nuki_api_token", "").strip()
 HOMES_COUNT = opts["homes_count"]
 
-# Multi-Standort Konfiguration
+# Multi-Standort Konfiguration. Eine Wohnung kann UniFi Access (Door Group + Policy),
+# Nuki (Smart Lock mit Keypad) oder beides gleichzeitig nutzen (z.B. zwei Tueren mit
+# unterschiedlichen Systemen an derselben Wohnung) - je nachdem, welche Felder gesetzt sind.
 homes = []
 seen_names = set()
 
@@ -56,6 +59,7 @@ for i in range(1, HOMES_COUNT + 1):
         "name": name,
         "policy": opts.get(f"home{i}_policy_id", "").strip(),
         "door_group": opts.get(f"home{i}_door_group_id", "").strip(),
+        "nuki_smartlock_id": opts.get(f"home{i}_nuki_smartlock_id", "").strip(),
     })
 
 if not homes:
@@ -70,6 +74,14 @@ UNIFI_HEADERS = {
 # Smoobu HMAC-authentifizierte Public API (loest den Legacy "Api-Key" Header ab,
 # der von Smoobu am 25.09.2026 abgeschaltet wird). https://docs.smoobu.com/#hmac-authentication
 SMOOBU_API_HOST = "https://login.smoobu.com"
+
+# Nuki Web API (https://api.nuki.io). Statischer API-Token (Nuki Web -> Menue -> API),
+# Authentifizierung per "Authorization: Bearer <token>".
+NUKI_API_HOST = "https://api.nuki.io"
+NUKI_HEADERS = {
+    "Authorization": f"Bearer {NUKI_API_TOKEN}",
+    "Content-Type": "application/json",
+}
 
 UMLAUT_MAP = {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"}
 
@@ -106,16 +118,17 @@ def find_home(property_name):
 
 
 def generate_pin():
-    return "".join(secrets.choice("0123456789") for _ in range(6))
+    # Nuki-Keypads haben keine "0"-Taste, PINs bestehen daher grundsaetzlich nur aus
+    # den Ziffern 1-9 - so funktioniert derselbe PIN auf UniFi- UND Nuki-Tueren.
+    return "".join(secrets.choice("123456789") for _ in range(6))
 
 
-async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company):
-    """Legt einen befristeten Visitor in UniFi Access an und liefert den PIN zurück.
+def _iso_millis_utc(ts):
+    return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    Gemeinsam genutzt vom automatischen Smoobu-Webhook und der manuellen
-    Besucher-Anlage im Dashboard - lässt aiohttp.ClientError beim Aufrufer aufschlagen.
-    """
-    pin = generate_pin()
+
+async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin):
+    """Legt einen befristeten Visitor in UniFi Access an."""
     visitor_payload = {
         "first_name": first,
         "last_name": last,
@@ -140,7 +153,66 @@ async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, rem
         ssl=False,
     ) as r:
         r.raise_for_status()
-    return pin
+
+
+async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
+    """Legt einen befristeten Keypad-Code auf einem Nuki Smart Lock an.
+
+    Erfordert ein physisches Nuki Keypad am Smart Lock - ohne Keypad kann kein Code
+    eingegeben werden. type 13 = Keypad-Code. Format/Endpoint gemaess Nuki Web API
+    Doku + Community-Beispielen (https://developer.nuki.io/t/web-api-example-manage-
+    pin-codes-for-your-nuki-keypad/54) - nicht gegen einen echten Account getestet,
+    bitte nach dem ersten Einsatz verifizieren.
+    """
+    body = {
+        "smartlockId": int(smartlock_id),
+        "name": name,
+        "code": int(pin),
+        "type": 13,
+        "allowedFromDate": _iso_millis_utc(start_ts),
+        "allowedUntilDate": _iso_millis_utc(end_ts),
+    }
+    async with session.put(
+        f"{NUKI_API_HOST}/smartlock/auth",
+        headers=NUKI_HEADERS,
+        json=body,
+    ) as r:
+        r.raise_for_status()
+
+
+async def create_access_for_home(session, home, first, last, start_ts, end_ts, remarks, visitor_company):
+    """Legt Zutritt fuer eine Wohnung an - bei UniFi Access und/oder Nuki, je nachdem
+    was fuer sie konfiguriert ist (eine Wohnung kann z.B. eine UniFi-Tuer und eine
+    Nuki-Tuer gleichzeitig haben). Beide Systeme bekommen denselben PIN.
+
+    Gibt (pin, erfolgreich, fehlgeschlagen) zurueck - erfolgreich/fehlgeschlagen sind
+    Listen der jeweiligen Systemnamen. Wird nichts konfiguriert gefunden, wird eine
+    ValueError geworfen.
+    """
+    pin = generate_pin()
+    succeeded = []
+    failed = []
+
+    if home["door_group"] and home["policy"]:
+        try:
+            await create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin)
+            succeeded.append("UniFi Access")
+        except aiohttp.ClientError as e:
+            log.error("UniFi Visitor-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
+            failed.append(f"UniFi Access ({e})")
+
+    if home["nuki_smartlock_id"]:
+        try:
+            await create_nuki_code(session, home["nuki_smartlock_id"], pin, remarks, start_ts, end_ts)
+            succeeded.append("Nuki")
+        except aiohttp.ClientError as e:
+            log.error("Nuki-Code-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
+            failed.append(f"Nuki ({e})")
+
+    if not succeeded and not failed:
+        raise ValueError(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
+
+    return pin, succeeded, failed
 
 
 def _smoobu_signature(method, path, query, timestamp, nonce, body_hash):
@@ -236,12 +308,18 @@ async def status(request):
     lines = ["UniFi AutoPIN Add-on läuft ✅", "", "Konfigurierte Wohnungen:", ""]
     if homes:
         for h in homes:
-            lines.append(f"- {h['name']} → DoorGroup: {h['door_group']} → Policy: {h['policy']}")
+            systems = []
+            if h["door_group"] and h["policy"]:
+                systems.append(f"UniFi (DoorGroup: {h['door_group']}, Policy: {h['policy']})")
+            if h["nuki_smartlock_id"]:
+                systems.append(f"Nuki (Smartlock: {h['nuki_smartlock_id']})")
+            lines.append(f"- {h['name']} → {' + '.join(systems) if systems else '(kein System konfiguriert)'}")
     else:
         lines.append("(keine)")
     lines.append("")
     lines.append("Türgruppen-Scan: GET /scan")
     lines.append("Access Policies:  GET /policies")
+    lines.append("Nuki Smart Locks: GET /nuki-locks")
     lines.append("Dashboard:        über die Home Assistant Seitenleiste (Ingress)")
     return web.Response(text="\n".join(lines))
 
@@ -300,6 +378,30 @@ async def policies(request):
     return web.Response(text="\n".join(results), content_type="text/plain")
 
 
+async def nuki_locks(request):
+    """Listet alle Nuki Smart Locks des Accounts auf (zur Ermittlung der smartlockId)."""
+    if not NUKI_API_TOKEN:
+        return web.Response(text="nuki_api_token ist nicht konfiguriert.", status=503)
+
+    session = request.app["http"]
+    try:
+        async with session.get(f"{NUKI_API_HOST}/smartlock", headers=NUKI_HEADERS) as r:
+            r.raise_for_status()
+            data = await r.json()
+    except aiohttp.ClientError as e:
+        log.error("Nuki-Smartlock-Abfrage fehlgeschlagen: %s", e)
+        return web.Response(text=f"Fehler beim Abruf: {e}", status=502)
+
+    output = ["Gefundene Nuki Smart Locks:\n"]
+    for lock in data:
+        lock_id = lock.get("smartlockId", lock.get("id"))
+        output.append(f"NAME: {lock.get('name')}   ID: {lock_id}")
+    if len(output) == 1:
+        output.append("(keine gefunden)")
+
+    return web.Response(text="\n".join(output), content_type="text/plain")
+
+
 async def handle(request):
     secret = request.query.get("secret", "")
     if not hmac.compare_digest(secret, WEBHOOK_SECRET):
@@ -351,19 +453,35 @@ async def handle(request):
     session = request.app["http"]
 
     try:
-        pin = await create_unifi_visitor(
+        pin, succeeded, failed = await create_access_for_home(
             session, home, first, last, start_ts, end_ts,
             f"Smoobu Booking {booking_id}", property_name,
         )
-    except aiohttp.ClientError as e:
-        log.error("UniFi Visitor-Erstellung fehlgeschlagen (Booking %s): %s", booking_id, e)
-        return web.Response(text=f"UNIFI ERROR: {e}", status=502)
+    except ValueError as e:
+        log.warning(str(e))
+        return web.Response(text=f"ERROR: {e}", status=422)
 
-    log.info("Visitor angelegt: %s %s, Wohnung %s, Booking %s", first, last, property_name, booking_id)
+    if failed:
+        log.error(
+            "Zutritt teilweise/komplett fehlgeschlagen (Booking %s, Wohnung %s): erfolgreich=%s, fehlgeschlagen=%s",
+            booking_id, property_name, succeeded, failed,
+        )
+        return web.Response(
+            text=f"ERROR: {'; '.join(failed)} (erfolgreich: {', '.join(succeeded) or '-'})",
+            status=502,
+        )
+
+    log.info(
+        "Visitor angelegt: %s %s, Wohnung %s, Booking %s, Systeme: %s",
+        first, last, property_name, booking_id, ", ".join(succeeded),
+    )
 
     await push_pin_to_smoobu(session, booking_id, pin)
 
-    return web.Response(text=f"OK – Visitor {first} {last}, PIN {pin}, Wohnung: {property_name}", status=200)
+    return web.Response(
+        text=f"OK – Visitor {first} {last}, PIN {pin}, Wohnung: {property_name}, Systeme: {', '.join(succeeded)}",
+        status=200,
+    )
 
 
 DASHBOARD_STYLE = """
@@ -538,16 +656,28 @@ async def dashboard_create_visitor(request):
         remarks += f" (Buchung {form['booking_id']})"
 
     try:
-        pin = await create_unifi_visitor(
+        pin, succeeded, failed = await create_access_for_home(
             session, home, first, last, start_ts, end_ts, remarks, home["name"],
         )
-    except aiohttp.ClientError as e:
-        log.error("Manuelle Visitor-Erstellung fehlgeschlagen: %s", e)
-        return error_page(f"UniFi-Fehler beim Anlegen des Besuchers: {e}", status=502)
+    except ValueError as e:
+        return error_page(str(e), status=422)
 
-    log.info("Manueller Visitor angelegt: %s %s, Wohnung %s", first, last, home["name"])
+    if failed and not succeeded:
+        log.error("Manuelle Zutritts-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], failed)
+        return error_page(f"Fehler beim Anlegen des Besuchers: {'; '.join(failed)}", status=502)
 
-    success = f"Besucher <strong>{html.escape(first)} {html.escape(last)}</strong> angelegt. PIN: <span class=\"pin\">{pin}</span>"
+    log.info(
+        "Manueller Visitor angelegt: %s %s, Wohnung %s, Systeme: %s",
+        first, last, home["name"], ", ".join(succeeded),
+    )
+
+    success = (
+        f"Besucher <strong>{html.escape(first)} {html.escape(last)}</strong> angelegt "
+        f"({html.escape(', '.join(succeeded))}). PIN: <span class=\"pin\">{pin}</span>"
+    )
+    if failed:
+        success += f'</p><p class="msg-error">Achtung, teilweise fehlgeschlagen: {html.escape("; ".join(failed))}'
+
     return web.Response(
         text=render_dashboard(bookings, homes, success=success, bookings_error=bookings_error),
         content_type="text/html",
@@ -561,6 +691,7 @@ def build_main_app(http_session):
     app.router.add_get("/", status)
     app.router.add_get("/scan", scan)
     app.router.add_get("/policies", policies)
+    app.router.add_get("/nuki-locks", nuki_locks)
     app.router.add_post("/", handle)
     return app
 

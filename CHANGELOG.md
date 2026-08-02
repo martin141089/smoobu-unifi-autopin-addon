@@ -6,17 +6,40 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.7.0]
+
+### Hinzugefügt
+- **Nuki-Unterstützung.** Wohnungen können jetzt zusätzlich zu (oder statt) UniFi Access
+  auch über Nuki Smart Locks mit Zutritt versehen werden - z.B. eine Wohnung mit zwei
+  Türen, eine über UniFi, eine über Nuki. Neue Optionen: `nuki_api_token` (global) und
+  `homeN_nuki_smartlock_id` (pro Wohnung, optional). Ist für eine Wohnung sowohl UniFi
+  als auch Nuki konfiguriert, bekommen beide Systeme **denselben PIN**.
+- Neuer Hilfsendpunkt `GET /nuki-locks` zur Ermittlung der Nuki-Smartlock-IDs (analog zu
+  `/scan` und `/policies`).
+
+### Geändert
+- **PIN-Erzeugung nutzt nur noch die Ziffern 1-9** (keine „0“ mehr). Physische
+  Nuki-Keypads haben keine 0-Taste; damit funktioniert ein einzelner PIN jetzt zuverlässig
+  auf UniFi- und Nuki-Türen derselben Wohnung.
+- Dashboard-Menüpunkt in der HA-Seitenleiste von „AutoPIN Dashboard“ in „FeWo-Tür-PIN“
+  umbenannt (`panel_title`).
+
+### Hinweis
+- Nuki-Zutritt per PIN erfordert ein **physisches Nuki Keypad** am Smart Lock.
+- Die Nuki-API-Anbindung ist auf Basis der offiziellen Nuki-Doku umgesetzt, aber noch
+  nicht gegen einen echten Nuki-Account getestet - bitte nach dem ersten Einsatz prüfen.
+
 ## [3.6.1]
 
 ### Geändert
-- `panel_admin: false` gesetzt - der „AutoPIN Dashboard“-Menüpunkt in der HA-Seitenleiste
+- `panel_admin: false` gesetzt - der „FeWo-Tür-PIN“-Menüpunkt in der HA-Seitenleiste
   ist jetzt für alle Benutzer sichtbar, nicht nur für Administratoren.
 
 ## [3.6.0]
 
 ### Geändert
 - **Dashboard läuft jetzt über Home Assistant Ingress statt Basic Auth.** Das Dashboard
-  erscheint als eigener Menüpunkt „AutoPIN Dashboard“ in der HA‑Seitenleiste und ist
+  erscheint als eigener Menüpunkt „FeWo-Tür-PIN“ in der HA‑Seitenleiste und ist
   ausschließlich für eingeloggte Home‑Assistant‑Benutzer erreichbar - die Option
   `dashboard_password` entfällt vollständig, ein separates Passwort ist nicht mehr nötig.
 - Das Add-on läuft nicht mehr im `host_network`‑Modus. Webhook, `/scan` und `/policies`
