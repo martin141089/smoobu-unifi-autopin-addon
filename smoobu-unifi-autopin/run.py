@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import datetime
 import hashlib
@@ -36,7 +37,6 @@ SMOOBU_API_SECRET = opts["smoobu_api_secret"]
 UNIFI_IP = opts["unifi_host"]
 UNIFI_TOKEN = opts["unifi_token"]
 WEBHOOK_SECRET = opts["webhook_secret"]
-DASHBOARD_PASSWORD = opts.get("dashboard_password", "").strip()
 HOMES_COUNT = opts["homes_count"]
 
 # Multi-Standort Konfiguration
@@ -60,9 +60,6 @@ for i in range(1, HOMES_COUNT + 1):
 
 if not homes:
     log.warning("Keine Wohnungen konfiguriert - Webhooks können nicht zugeordnet werden")
-
-if not DASHBOARD_PASSWORD:
-    log.warning("Kein dashboard_password gesetzt - /dashboard ist deaktiviert")
 
 UNIFI_BASE = f"https://{UNIFI_IP}:12445/api/v1/developer"
 UNIFI_HEADERS = {
@@ -245,7 +242,7 @@ async def status(request):
     lines.append("")
     lines.append("Türgruppen-Scan: GET /scan")
     lines.append("Access Policies:  GET /policies")
-    lines.append("Dashboard:        GET /dashboard" + ("" if DASHBOARD_PASSWORD else " (deaktiviert, dashboard_password fehlt)"))
+    lines.append("Dashboard:        über die Home Assistant Seitenleiste (Ingress)")
     return web.Response(text="\n".join(lines))
 
 
@@ -401,7 +398,7 @@ def render_dashboard(bookings, homes_list, form=None, error=None, success=None, 
                 <td>{esc(apartment_name)}</td>
                 <td>{esc(b.get('arrival'))}</td>
                 <td>{esc(b.get('departure'))}</td>
-                <td><a href="/dashboard?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a></td>
+                <td><a href="?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a></td>
             </tr>
         """)
     bookings_html = "".join(rows) if rows else '<tr><td colspan="5">Keine aktuellen Buchungen gefunden.</td></tr>'
@@ -440,7 +437,7 @@ def render_dashboard(bookings, homes_list, form=None, error=None, success=None, 
 <h2 id="anlegen">Besucher manuell anlegen</h2>
 <p>Unabhängig von Smoobu nutzbar (z.&nbsp;B. für Handwerker oder Reinigung) oder über
 „Besucher anlegen“ bei einer Buchung oben mit Name/Zeitraum vorausgefüllt.</p>
-<form method="post" action="/dashboard/visitor">
+<form method="post" action="visitor">
     <div>
         <label for="home">Wohnung</label><br>
         <select name="home" id="home" required>{''.join(home_options)}</select>
@@ -557,48 +554,47 @@ async def dashboard_create_visitor(request):
     )
 
 
-@web.middleware
-async def dashboard_auth_middleware(request, handler):
-    if not request.path.startswith("/dashboard"):
-        return await handler(request)
-
-    if not DASHBOARD_PASSWORD:
-        return web.Response(text="Dashboard ist deaktiviert (dashboard_password nicht gesetzt)", status=503)
-
-    password = None
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Basic "):
-        try:
-            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
-            _, _, password = decoded.partition(":")
-        except (ValueError, UnicodeDecodeError):
-            password = None
-
-    if password is None or not hmac.compare_digest(password, DASHBOARD_PASSWORD):
-        return web.Response(
-            text="Unauthorized",
-            status=401,
-            headers={"WWW-Authenticate": 'Basic realm="Smoobu UniFi Dashboard"'},
-        )
-
-    return await handler(request)
+def build_main_app(http_session):
+    """Webhook, Tür-Scan und Policy-Suche - direkt im LAN erreichbar (Port 8099)."""
+    app = web.Application()
+    app["http"] = http_session
+    app.router.add_get("/", status)
+    app.router.add_get("/scan", scan)
+    app.router.add_get("/policies", policies)
+    app.router.add_post("/", handle)
+    return app
 
 
-async def make_http_session(app):
+def build_dashboard_app(http_session):
+    """Dashboard - NUR über Home Assistant Ingress erreichbar (Port 8100, nicht
+    öffentlich gemappt). Home Assistant übernimmt die Authentifizierung; ein
+    eigenes Passwort ist hier bewusst nicht mehr nötig."""
+    app = web.Application()
+    app["http"] = http_session
+    app.router.add_get("/", dashboard_page)
+    app.router.add_post("/visitor", dashboard_create_visitor)
+    return app
+
+
+async def main():
     timeout = aiohttp.ClientTimeout(total=10)
-    app["http"] = aiohttp.ClientSession(timeout=timeout)
-    yield
-    await app["http"].close()
+    async with aiohttp.ClientSession(timeout=timeout) as http_session:
+        main_runner = web.AppRunner(build_main_app(http_session))
+        await main_runner.setup()
+        await web.TCPSite(main_runner, "0.0.0.0", 8099).start()
+        log.info("Webhook/Scan/Policies auf Port 8099 gestartet")
 
+        dashboard_runner = web.AppRunner(build_dashboard_app(http_session))
+        await dashboard_runner.setup()
+        await web.TCPSite(dashboard_runner, "0.0.0.0", 8100).start()
+        log.info("Dashboard (nur via Ingress) auf Port 8100 gestartet")
 
-app = web.Application(middlewares=[dashboard_auth_middleware])
-app.cleanup_ctx.append(make_http_session)
-app.router.add_get("/", status)
-app.router.add_get("/scan", scan)
-app.router.add_get("/policies", policies)
-app.router.add_get("/dashboard", dashboard_page)
-app.router.add_post("/dashboard/visitor", dashboard_create_visitor)
-app.router.add_post("/", handle)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await main_runner.cleanup()
+            await dashboard_runner.cleanup()
+
 
 if __name__ == "__main__":
-    web.run_app(app, host="0.0.0.0", port=8099)
+    asyncio.run(main())

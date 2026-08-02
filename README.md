@@ -12,7 +12,8 @@ Es ist **komplett sicher**, denn:
 ✅ Keine IDs, Tokens oder IPs liegen im GitHub‑Repo  
 ✅ Alle Zugänge werden ausschließlich lokal über HTTPS abgefragt  
 ✅ Auto‑Scan der Türgruppen erfolgt lokal und manuell  
-✅ Smoobu‑Anbindung über HMAC‑signierte Requests (keine geheimen Keys im Klartext‑Header)
+✅ Smoobu‑Anbindung über HMAC‑signierte Requests (keine geheimen Keys im Klartext‑Header)  
+✅ Dashboard nur für eingeloggte Home‑Assistant‑Benutzer über Ingress erreichbar
 
 ***
 
@@ -25,9 +26,9 @@ Es ist **komplett sicher**, denn:
 *   Apartment‑Routing basierend auf Smoobu Property Name
 *   Lokaler Tür‑Scan (Door‑Groups + Doors) unter `/scan`
 *   Lokale Access‑Policy‑Suche unter `/policies`
-*   **Web‑Dashboard** unter `/dashboard` (Basic‑Auth‑geschützt): Übersicht aktueller/kommender
-    Smoobu‑Buchungen sowie manuelle Besucher‑Anlage (auch unabhängig von Smoobu, z.&nbsp;B. für
-    Handwerker oder Reinigung)
+*   **Web‑Dashboard** in der Home‑Assistant‑Seitenleiste (über Ingress, mit HA‑Login
+    abgesichert): Übersicht aktueller/kommender Smoobu‑Buchungen sowie manuelle
+    Besucher‑Anlage (auch unabhängig von Smoobu, z.&nbsp;B. für Handwerker oder Reinigung)
 *   Korrekte Filterung des Smoobu‑Webhooks nach Event‑Typ (nur neue/geänderte Buchungen lösen eine PIN aus)
 *   Unterstützung für Umlaute & Namens‑Trennung
 *   Nicht‑blockierende Verarbeitung (asynchrones HTTP für UniFi & Smoobu)
@@ -47,8 +48,6 @@ Bevor du startest, halte Folgendes bereit:
 *   Ein selbst gewähltes **Webhook‑Secret** (beliebiger, ausreichend langer Zufallsstring)
 *   Die **exakten Namen deiner Wohnungen in Smoobu** (Property Name) — dieser Name muss
     1:1 in `homeN_name` eingetragen werden, da darüber die Zuordnung erfolgt
-*   Optional, aber empfohlen: ein **Dashboard‑Passwort** (`dashboard_password`), falls du das
-    Web‑Dashboard nutzen willst — ohne gesetztes Passwort bleibt `/dashboard` deaktiviert
 
 ***
 
@@ -86,7 +85,6 @@ options:
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
-  dashboard_password: ""
 
   homes_count: 1
 
@@ -106,10 +104,6 @@ options:
   home4_policy_id: ""
   home4_door_group_id: ""
 ```
-
-**Wichtig seit Version 3.5:** `dashboard_password` schaltet das Web‑Dashboard (`/dashboard`)
-frei. Bleibt es leer, ist `/dashboard` deaktiviert (Antwort 503) — Buchungsübersicht und
-manuelle Besucher‑Anlage sind dann nicht erreichbar, alles andere funktioniert wie gewohnt.
 
 **Wichtig seit Version 3.0:** Smoobu stellt seine Public API auf HMAC‑Authentifizierung um
 (der alte `Api-Key`‑Header wird am 25.09.2026 abgeschaltet). Dafür wird zusätzlich zum
@@ -155,9 +149,10 @@ Ausgabe‑Beispiel:
 
 # ✅ Dashboard verwenden
 
-Browser öffnen (Basic‑Auth‑Login, Benutzername beliebig, Passwort = `dashboard_password`):
-
-    http://HOMEASSISTANT-IP:8099/dashboard
+Das Dashboard läuft über **Home Assistant Ingress** und erscheint nach dem Start des
+Add-ons als eigener Menüpunkt **„AutoPIN Dashboard“** in der Home‑Assistant‑Seitenleiste.
+Ein Klick genügt — es ist automatisch mit deinem HA‑Login abgesichert, ein separates
+Passwort ist nicht nötig und wird auch nicht mehr abgefragt.
 
 Das Dashboard zeigt:
 
@@ -172,10 +167,10 @@ befristeter Visitor in UniFi Access angelegt; der PIN wird direkt im Dashboard a
 (bei manueller Anlage gibt es **keine** Rückschreibung an Smoobu, da kein Bezug zu einer
 konkreten Buchung besteht).
 
-**Sicherheitshinweis:** Ohne `dashboard_password` ist `/dashboard` komplett deaktiviert.
-Die Basic‑Auth läuft wie der Rest des Add-ons unverschlüsselt über HTTP im lokalen Netz —
-ausreichend für den Betrieb hinter einem vertrauenswürdigen LAN/Home‑Assistant, aber kein
-Ersatz für eine echte Benutzerverwaltung.
+**Sicherheitshinweis:** Der interne Dashboard‑Port (8100) wird bewusst **nicht** direkt im
+Netzwerk exponiert — er ist ausschließlich über den Ingress‑Proxy von Home Assistant
+erreichbar, also nur für bereits eingeloggte HA‑Benutzer. Webhook, `/scan` und `/policies`
+bleiben unverändert direkt über Port 8099 erreichbar (Webhook braucht das für Smoobu).
 
 ***
 
