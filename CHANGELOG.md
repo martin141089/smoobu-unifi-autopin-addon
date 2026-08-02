@@ -21,6 +21,8 @@ Supervisor sie aus).
 - **PIN-Erzeugung nutzt nur noch die Ziffern 1-9** (keine „0“ mehr). Physische
   Nuki-Keypads haben keine 0-Taste; damit funktioniert ein einzelner PIN jetzt zuverlässig
   auf UniFi- und Nuki-Türen derselben Wohnung.
+- Dashboard-Menüpunkt in der HA-Seitenleiste von „AutoPIN Dashboard“ in „FeWo-Tür-PIN“
+  umbenannt (`panel_title`).
 
 ### Hinweis
 - Nuki-Zutritt per PIN erfordert ein **physisches Nuki Keypad** am Smart Lock.
@@ -30,14 +32,14 @@ Supervisor sie aus).
 ## [3.6.1]
 
 ### Geändert
-- `panel_admin: false` gesetzt - der „AutoPIN Dashboard“-Menüpunkt in der HA-Seitenleiste
+- `panel_admin: false` gesetzt - der „FeWo-Tür-PIN“-Menüpunkt in der HA-Seitenleiste
   ist jetzt für alle Benutzer sichtbar, nicht nur für Administratoren.
 
 ## [3.6.0]
 
 ### Geändert
 - **Dashboard läuft jetzt über Home Assistant Ingress statt Basic Auth.** Das Dashboard
-  erscheint als eigener Menüpunkt „AutoPIN Dashboard“ in der HA‑Seitenleiste und ist
+  erscheint als eigener Menüpunkt „FeWo-Tür-PIN“ in der HA‑Seitenleiste und ist
   ausschließlich für eingeloggte Home‑Assistant‑Benutzer erreichbar - die Option
   `dashboard_password` entfällt vollständig, ein separates Passwort ist nicht mehr nötig.
 - Das Add-on läuft nicht mehr im `host_network`‑Modus. Webhook, `/scan` und `/policies`

@@ -181,7 +181,7 @@ Ausgabe‑Beispiel:
 # ✅ Dashboard verwenden
 
 Das Dashboard läuft über **Home Assistant Ingress** und erscheint nach dem Start des
-Add-ons als eigener Menüpunkt **„AutoPIN Dashboard“** in der Home‑Assistant‑Seitenleiste.
+Add-ons als eigener Menüpunkt **„FeWo-Tür-PIN“** in der Home‑Assistant‑Seitenleiste.
 Ein Klick genügt — es ist automatisch mit deinem HA‑Login abgesichert, ein separates
 Passwort ist nicht nötig und wird auch nicht mehr abgefragt.
 

@@ -67,7 +67,7 @@ Bevor du die Konfiguration ausfüllst, halte Folgendes bereit:
 3.  `/scan`, `/policies` bzw. `/nuki-locks` aufrufen (siehe unten), um die IDs zu ermitteln
 4.  IDs in die Konfiguration nachtragen und Add‑on **neu starten**
 5.  Smoobu‑Webhook einrichten (siehe unten)
-6.  Optional: Dashboard über den Menüpunkt „AutoPIN Dashboard“ in der HA‑Seitenleiste öffnen
+6.  Optional: Dashboard über den Menüpunkt „FeWo-Tür-PIN“ in der HA‑Seitenleiste öffnen
 
 ***
 
@@ -177,7 +177,7 @@ Ausgabe‑Beispiel:
 # ✅ Dashboard verwenden
 
 Das Dashboard läuft über **Home Assistant Ingress** und erscheint nach dem Start des
-Add-ons als eigener Menüpunkt **„AutoPIN Dashboard“** in der Home‑Assistant‑Seitenleiste.
+Add-ons als eigener Menüpunkt **„FeWo-Tür-PIN“** in der Home‑Assistant‑Seitenleiste.
 Ein Klick genügt — es ist automatisch mit deinem HA‑Login abgesichert, ein separates
 Passwort ist nicht nötig und wird auch nicht mehr abgefragt.
 

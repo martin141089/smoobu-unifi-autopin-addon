@@ -20,7 +20,7 @@ ingress: true
 ingress_port: 8100
 panel_admin: false
 panel_icon: mdi:key-variant
-panel_title: "AutoPIN Dashboard"
+panel_title: "FeWo-Tür-PIN"
 
 options:
   smoobu_api_key: ""
