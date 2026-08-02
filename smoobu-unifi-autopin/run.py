@@ -38,6 +38,7 @@ UNIFI_IP = opts["unifi_host"]
 UNIFI_TOKEN = opts["unifi_token"]
 WEBHOOK_SECRET = opts["webhook_secret"]
 NUKI_API_TOKEN = opts.get("nuki_api_token", "").strip()
+ADMIN_EMAIL = opts.get("admin_email", "").strip()
 HOMES_COUNT = opts["homes_count"]
 
 # Multi-Standort Konfiguration. Eine Wohnung kann UniFi Access (Door Group + Policy),
@@ -142,7 +143,13 @@ class NoProviderConfigured(Exception):
 
 
 async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin):
-    """Legt einen befristeten Visitor in UniFi Access an."""
+    """Legt einen befristeten Visitor in UniFi Access an.
+
+    Das optionale "email"-Feld der UniFi-Access-API ist offiziell fuer die E-Mail des
+    Besuchers gedacht; wir nutzen es hier bewusst als Admin-Kontaktadresse (admin_email),
+    da Smoobu-Buchungen keine verlaessliche Gaeste-E-Mail liefern und der Betreiber so als
+    Ansprechpartner am Visitor-Eintrag sichtbar ist.
+    """
     visitor_payload = {
         "first_name": first,
         "last_name": last,
@@ -160,6 +167,8 @@ async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, rem
         "pin_code": pin,
         "access_policy_ids": [home["policy"]],
     }
+    if ADMIN_EMAIL:
+        visitor_payload["email"] = ADMIN_EMAIL
     async with session.post(
         f"{UNIFI_BASE}/visitors",
         headers=UNIFI_HEADERS,
@@ -173,14 +182,14 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     """Legt einen befristeten Keypad-Code auf einem Nuki Smart Lock an.
 
     Erfordert ein physisches Nuki Keypad am Smart Lock - ohne Keypad kann kein Code
-    eingegeben werden. type 13 = Keypad-Code. Format/Endpoint gemaess Nuki Web API
-    Doku + Community-Beispielen (https://developer.nuki.io/t/web-api-example-manage-
-    pin-codes-for-your-nuki-keypad/54) - nicht gegen einen echten Account getestet,
-    bitte nach dem ersten Einsatz verifizieren.
+    eingegeben werden. type 13 = Keypad-Code. "smartlockIds" ist ein Array (nicht
+    "smartlockId" als Einzelwert) und "name" ist auf ca. 20 Zeichen begrenzt - beides
+    gemaess einem geloesten Nuki-Forum-Thread mit funktionierendem Beispiel-Body
+    (https://developer.nuki.io/t/422-error-when-creating-type-13-authorization-via-web-api-keypad-2/35593).
     """
     body = {
-        "smartlockId": _parse_nuki_smartlock_id(smartlock_id),
-        "name": name,
+        "smartlockIds": [_parse_nuki_smartlock_id(smartlock_id)],
+        "name": name[:20],
         "code": int(pin),
         "type": 13,
         "allowedFromDate": _iso_millis_utc(start_ts),

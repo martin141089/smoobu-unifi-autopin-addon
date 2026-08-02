@@ -2,6 +2,30 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.8.0]
+
+### Hinzugefügt
+- Neue optionale Option **`admin_email`**: wird bei jeder UniFi-Access-Visitor-Anlage
+  (automatisch per Smoobu-Webhook wie auch manuell im Dashboard) im offiziellen
+  `email`-Feld des Visitors hinterlegt, damit dort ein fester Ansprechpartner statt der
+  bei Smoobu-Buchungen nicht zuverlässig vorhandenen Gäste-E-Mail sichtbar ist.
+
+### Hinweis
+- Bei Nuki gibt es für Keypad-Codes (Typ 13) technisch kein vergleichbares
+  Kontakt-/E-Mail-Feld (laut offizieller Doku und Community-Beispielen) - `admin_email`
+  wirkt sich daher ausschließlich auf UniFi Access aus.
+
+## [3.7.2]
+
+### Behoben
+- **Nuki-Codeanlage schlug mit `500, message='Server Error'` fehl.** Zwei Ursachen
+  (gefunden über einen gelösten Nuki-Forum-Thread mit funktionierendem Beispiel-Body):
+  - Nuki erwartet das Feld `smartlockIds` als **Array**, nicht `smartlockId` als
+    Einzelwert.
+  - Der `name` im Code ist auf ca. 20 Zeichen begrenzt; unsere bisherigen Texte
+    (z.B. „Manuell im Dashboard angelegt (Buchung 12345)“) waren deutlich länger und
+    wurden jetzt auf 20 Zeichen gekürzt.
+
 ## [3.7.1]
 
 ### Behoben
