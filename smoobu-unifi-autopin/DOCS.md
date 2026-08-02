@@ -2,9 +2,9 @@
 
 **Multi‑Wohnungs PIN‑ & Visitor‑Automation für UniFi Access + Smoobu**
 
-Dieses Home‑Assistant‑Add-on erlaubt die vollautomatische PIN‑ und Visitor‑Erstellung  
-für UniFi Access basierend auf Smoobu‑Buchungen — Multi‑Standort‑fähig und generisch  
-für beliebige Umgebungen (UDM‑SE, UniFi Access Controller etc.).
+Dieses Add-on erlaubt die vollautomatische PIN‑ und Visitor‑Erstellung für UniFi Access
+basierend auf Smoobu‑Buchungen — Multi‑Standort‑fähig und generisch für beliebige
+Umgebungen (UDM‑SE, UniFi Access Controller etc.).
 
 Es ist **komplett sicher**, denn:
 
@@ -33,16 +33,7 @@ Es ist **komplett sicher**, denn:
 
 ***
 
-# ✅ Installation
-
-1.  Repository hinzufügen
-2.  Add‑on installieren
-3.  Add‑on **nicht sofort starten**
-4.  Konfiguration öffnen
-
-***
-
-# ✅ Konfiguration (`config.yaml`)
+# ✅ Konfiguration
 
 Das Add-on bietet dynamische Wohnungsunterstützung:
 
@@ -84,12 +75,14 @@ options:
 bestehenden `smoobu_api_key` ein `smoobu_api_secret` benötigt. Beide findest du in deinem
 Smoobu‑Account unter **Einstellungen → API**.
 
+Nach dem Ausfüllen der Konfiguration das Add-on starten.
+
 ***
 
 # ✅ Door‑Scan & Policy‑Suche verwenden
 
 Das Add-on enthält zwei lokale Hilfsseiten, um die für die Konfiguration nötigen IDs zu finden —
-beide laufen auf demselben Port wie der Webhook (8099), ein separater Port ist nicht mehr nötig.
+beide laufen auf demselben Port wie der Webhook (8099), ein separater Port ist nicht nötig.
 
 ### Türgruppen & Türen:
 
@@ -139,11 +132,10 @@ Platzhalter in Nachrichten:
 
 ***
 
-# ✅ Run Mode
+# ✅ Betrieb
 
 Nach Abschluss aller Konfigurationen:
 
-*   Add-on starten
 *   Gäste erhalten automatisch PINs
 *   Visitors erscheinen im UniFi Access
 *   Türgruppen werden korrekt zugeordnet
@@ -151,21 +143,8 @@ Nach Abschluss aller Konfigurationen:
 
 ***
 
-# ✅ Dateistruktur des Add-ons
-
-    /
-    ├── config.yaml
-    ├── run.py
-    ├── DOCS.md          (Dokumentation, wird in Home Assistant angezeigt)
-    ├── CHANGELOG.md     (Changelog, wird in Home Assistant angezeigt)
-    └── Dockerfile
-
-***
-
 # ✅ Changelog
 
-Siehe [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) für die
-vollständige Versionshistorie. Dieselbe Datei wird auch im Update-Dialog von Home Assistant
-angezeigt.
-
-***
+Siehe die Registerkarte **Changelog** dieses Add-ons oder
+[CHANGELOG.md](https://github.com/martin141089/smoobu-unifi-autopin-addon/blob/2.1.1/smoobu-unifi-autopin/CHANGELOG.md)
+im Repository.
