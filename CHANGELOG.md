@@ -6,6 +6,23 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.6.0]
+
+### Geändert
+- **Dashboard läuft jetzt über Home Assistant Ingress statt Basic Auth.** Das Dashboard
+  erscheint als eigener Menüpunkt „AutoPIN Dashboard“ in der HA‑Seitenleiste und ist
+  ausschließlich für eingeloggte Home‑Assistant‑Benutzer erreichbar - die Option
+  `dashboard_password` entfällt vollständig, ein separates Passwort ist nicht mehr nötig.
+- Das Add-on läuft nicht mehr im `host_network`‑Modus. Webhook, `/scan` und `/policies`
+  bleiben unverändert über Port 8099 (jetzt per explizitem Port‑Mapping) erreichbar; das
+  Dashboard läuft intern auf einem separaten, nicht öffentlich gemappten Port (8100), der
+  ausschließlich über den Ingress‑Proxy von Supervisor erreichbar ist.
+
+### Sicherheit
+- Der bisherige Basic‑Auth‑Schutz (Passwort im Klartext über HTTP) entfällt zugunsten der
+  echten Zugriffskontrolle durch Home Assistant selbst - keine eigene Passwortverwaltung
+  und kein zusätzlicher, potenziell brute-forcebarer Login mehr nötig.
+
 ## [3.5.0]
 
 ### Hinzugefügt

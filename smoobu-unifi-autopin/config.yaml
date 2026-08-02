@@ -1,5 +1,5 @@
 name: "Smoobu UniFi Access AutoPIN"
-version: "3.5.0"
+version: "3.6.0"
 slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
@@ -10,7 +10,16 @@ arch:
 
 startup: services
 boot: auto
-host_network: true
+
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: "Smoobu Webhook, Tür-Scan (/scan), Access-Policy-Suche (/policies)"
+
+ingress: true
+ingress_port: 8100
+panel_icon: mdi:key-variant
+panel_title: "AutoPIN Dashboard"
 
 options:
   smoobu_api_key: ""
@@ -18,7 +27,6 @@ options:
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
-  dashboard_password: ""
   homes_count: 1
 
   home1_name: ""
@@ -43,7 +51,6 @@ schema:
   unifi_host: str
   unifi_token: str
   webhook_secret: str
-  dashboard_password: str?
   homes_count: int
 
   home1_name: str?
