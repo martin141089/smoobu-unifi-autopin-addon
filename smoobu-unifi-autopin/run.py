@@ -127,6 +127,20 @@ def _iso_millis_utc(ts):
     return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
+def _parse_nuki_smartlock_id(value):
+    """Nuki zeigt die Smart-Lock-ID je nach Quelle unterschiedlich an: die Web API
+    (auch unser /nuki-locks) liefert eine Dezimalzahl, die Nuki-App/das Geraet selbst
+    zeigt oft die Hex-Form (z.B. "442f2ae4") - wir akzeptieren beides."""
+    try:
+        return int(value, 10)
+    except ValueError:
+        return int(value, 16)
+
+
+class NoProviderConfigured(Exception):
+    """Weder UniFi Access noch Nuki ist fuer diese Wohnung konfiguriert."""
+
+
 async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin):
     """Legt einen befristeten Visitor in UniFi Access an."""
     visitor_payload = {
@@ -165,7 +179,7 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     bitte nach dem ersten Einsatz verifizieren.
     """
     body = {
-        "smartlockId": int(smartlock_id),
+        "smartlockId": _parse_nuki_smartlock_id(smartlock_id),
         "name": name,
         "code": int(pin),
         "type": 13,
@@ -186,8 +200,8 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
     Nuki-Tuer gleichzeitig haben). Beide Systeme bekommen denselben PIN.
 
     Gibt (pin, erfolgreich, fehlgeschlagen) zurueck - erfolgreich/fehlgeschlagen sind
-    Listen der jeweiligen Systemnamen. Wird nichts konfiguriert gefunden, wird eine
-    ValueError geworfen.
+    Listen der jeweiligen Systemnamen. Wird nichts konfiguriert gefunden, wird
+    NoProviderConfigured geworfen.
     """
     pin = generate_pin()
     succeeded = []
@@ -205,12 +219,12 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
         try:
             await create_nuki_code(session, home["nuki_smartlock_id"], pin, remarks, start_ts, end_ts)
             succeeded.append("Nuki")
-        except aiohttp.ClientError as e:
+        except (aiohttp.ClientError, ValueError) as e:
             log.error("Nuki-Code-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"Nuki ({e})")
 
     if not succeeded and not failed:
-        raise ValueError(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
+        raise NoProviderConfigured(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
 
     return pin, succeeded, failed
 
@@ -457,7 +471,7 @@ async def handle(request):
             session, home, first, last, start_ts, end_ts,
             f"Smoobu Booking {booking_id}", property_name,
         )
-    except ValueError as e:
+    except NoProviderConfigured as e:
         log.warning(str(e))
         return web.Response(text=f"ERROR: {e}", status=422)
 
@@ -659,7 +673,7 @@ async def dashboard_create_visitor(request):
         pin, succeeded, failed = await create_access_for_home(
             session, home, first, last, start_ts, end_ts, remarks, home["name"],
         )
-    except ValueError as e:
+    except NoProviderConfigured as e:
         return error_page(str(e), status=422)
 
     if failed and not succeeded:

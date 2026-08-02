@@ -2,6 +2,19 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.7.1]
+
+### Behoben
+- **Nuki-Smartlock-ID als Hex-String führte zu einem Absturz** (`invalid literal for
+  int() with base 10: '442f2ae4'`). Nuki zeigt die Smart-Lock-ID je nach Quelle
+  unterschiedlich an - die Web API liefert eine Dezimalzahl, die Nuki-App/das Gerät oft
+  die Hex-Form. `home N_nuki_smartlock_id` akzeptiert jetzt beide Formate.
+- Der Fehler wurde zusätzlich fälschlich als „für diese Wohnung ist nichts konfiguriert“
+  angezeigt statt als echter Fehler geloggt, weil ein zu weit gefasstes `except
+  ValueError` die interne ID-Parsing-Exception mit dem eigentlich gemeinten
+  „kein System konfiguriert“-Fall verwechselt hat. Dafür gibt es jetzt eine eigene,
+  spezifischere Exception (`NoProviderConfigured`).
+
 ## [3.7.0]
 
 ### Hinzugefügt

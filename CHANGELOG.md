@@ -6,6 +6,16 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.7.1]
+
+### Behoben
+- **Nuki-Smartlock-ID als Hex-String führte zu einem Absturz** (`invalid literal for
+  int() with base 10: '442f2ae4'`). Nuki zeigt die Smart-Lock-ID je nach Quelle
+  unterschiedlich an - die Web API liefert eine Dezimalzahl, die Nuki-App/das Gerät oft
+  die Hex-Form. `homeN_nuki_smartlock_id` akzeptiert jetzt beide Formate.
+- Der Fehler wurde zusätzlich fälschlich als „für diese Wohnung ist nichts konfiguriert“
+  angezeigt statt als echter Fehler geloggt (zu weit gefasste Fehlerbehandlung).
+
 ## [3.7.0]
 
 ### Hinzugefügt
