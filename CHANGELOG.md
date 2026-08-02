@@ -6,6 +6,20 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.8.1]
+
+### Behoben
+- **Nuki meldete "erfolgreich" (2xx), obwohl kein Code am Gerät ankam.** Nukis Web API
+  ist laut Nuki-Entwicklerteam asynchron: ein erfolgreicher HTTP-Status bestätigt nur
+  die Annahme des Requests, nicht dass der Code tatsächlich am Smart Lock ankommt. Nach
+  dem Anlegen wird jetzt zusätzlich per `GET /smartlock/{id}/auth` geprüft, ob der Code
+  in Nukis Autorisierungsliste erscheint.
+
+### Geändert
+- Neuer Status **"unbestätigt"** für Nuki, getrennt von "fehlgeschlagen": wird im
+  Log/Dashboard klar ausgewiesen, blockiert aber nicht die PIN-Rückschreibung an
+  Smoobu, da eine kurze Sync-Verzögerung bei Nuki normal sein kann.
+
 ## [3.8.0]
 
 ### Hinzugefügt

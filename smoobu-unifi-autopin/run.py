@@ -179,16 +179,26 @@ async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, rem
 
 
 async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
-    """Legt einen befristeten Keypad-Code auf einem Nuki Smart Lock an.
+    """Legt einen befristeten Keypad-Code auf einem Nuki Smart Lock an und prueft
+    anschliessend, ob er tatsaechlich in Nukis Autorisierungsliste ankommt.
 
     Erfordert ein physisches Nuki Keypad am Smart Lock - ohne Keypad kann kein Code
     eingegeben werden. type 13 = Keypad-Code. "smartlockIds" ist ein Array (nicht
     "smartlockId" als Einzelwert) und "name" ist auf ca. 20 Zeichen begrenzt - beides
     gemaess einem geloesten Nuki-Forum-Thread mit funktionierendem Beispiel-Body
     (https://developer.nuki.io/t/422-error-when-creating-type-13-authorization-via-web-api-keypad-2/35593).
+
+    Nukis Web API ist laut Nuki-Entwicklerteam asynchron: ein 2xx auf den PUT-Request
+    bestaetigt nur die Annahme, nicht dass der Code tatsaechlich am Schloss ankommt
+    (https://developer.nuki.io/t/oauth2-api-integration-seems-accepted-but-no-keypad-
+    codes-created-redirect-uri-cant-be-saved-500-error/35811). Deshalb wird nach dem
+    Anlegen per GET geprueft, ob der Code in der Autorisierungsliste des Smart Locks
+    erscheint. Gibt True zurueck, wenn bestaetigt, sonst False (kein Fehler - dann ist
+    unklar, ob es nur eine Sync-Verzoegerung ist oder der Code wirklich fehlt).
     """
+    lock_id = _parse_nuki_smartlock_id(smartlock_id)
     body = {
-        "smartlockIds": [_parse_nuki_smartlock_id(smartlock_id)],
+        "smartlockIds": [lock_id],
         "name": name[:20],
         "code": int(pin),
         "type": 13,
@@ -202,18 +212,37 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     ) as r:
         r.raise_for_status()
 
+    try:
+        async with session.get(f"{NUKI_API_HOST}/smartlock/{lock_id}/auth", headers=NUKI_HEADERS) as r:
+            r.raise_for_status()
+            auths = await r.json()
+    except aiohttp.ClientError as e:
+        log.warning("Nuki-Bestaetigung konnte nicht abgerufen werden (Smartlock %s): %s", lock_id, e)
+        return False
+
+    match = next((a for a in auths if a.get("code") == int(pin)), None)
+    if match is None:
+        return False
+    if match.get("error"):
+        log.warning("Nuki meldet Fehler für Code auf Smartlock %s: %s", lock_id, match.get("error"))
+        return False
+    return True
+
 
 async def create_access_for_home(session, home, first, last, start_ts, end_ts, remarks, visitor_company):
     """Legt Zutritt fuer eine Wohnung an - bei UniFi Access und/oder Nuki, je nachdem
     was fuer sie konfiguriert ist (eine Wohnung kann z.B. eine UniFi-Tuer und eine
     Nuki-Tuer gleichzeitig haben). Beide Systeme bekommen denselben PIN.
 
-    Gibt (pin, erfolgreich, fehlgeschlagen) zurueck - erfolgreich/fehlgeschlagen sind
-    Listen der jeweiligen Systemnamen. Wird nichts konfiguriert gefunden, wird
-    NoProviderConfigured geworfen.
+    Gibt (pin, erfolgreich, unbestaetigt, fehlgeschlagen) zurueck - jeweils Listen der
+    betroffenen Systemnamen. "unbestaetigt" betrifft nur Nuki (asynchrone API - der
+    Code wurde angenommen, ist aber nicht sicher bestaetigt) und zaehlt NICHT als
+    Fehlschlag, blockiert also z.B. nicht die PIN-Rueckschreibung an Smoobu. Wird
+    nichts konfiguriert gefunden, wird NoProviderConfigured geworfen.
     """
     pin = generate_pin()
     succeeded = []
+    unconfirmed = []
     failed = []
 
     if home["door_group"] and home["policy"]:
@@ -226,16 +255,24 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
 
     if home["nuki_smartlock_id"]:
         try:
-            await create_nuki_code(session, home["nuki_smartlock_id"], pin, remarks, start_ts, end_ts)
-            succeeded.append("Nuki")
+            confirmed = await create_nuki_code(session, home["nuki_smartlock_id"], pin, remarks, start_ts, end_ts)
+            if confirmed:
+                succeeded.append("Nuki")
+            else:
+                log.warning(
+                    "Nuki-Code wurde angenommen, aber nicht bestätigt (Wohnung %s) - "
+                    "ggf. Sync-Verzögerung, bitte im Nuki-Account prüfen",
+                    home["name"],
+                )
+                unconfirmed.append("Nuki")
         except (aiohttp.ClientError, ValueError) as e:
             log.error("Nuki-Code-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"Nuki ({e})")
 
-    if not succeeded and not failed:
+    if not succeeded and not unconfirmed and not failed:
         raise NoProviderConfigured(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
 
-    return pin, succeeded, failed
+    return pin, succeeded, unconfirmed, failed
 
 
 def _smoobu_signature(method, path, query, timestamp, nonce, body_hash):
@@ -476,7 +513,7 @@ async def handle(request):
     session = request.app["http"]
 
     try:
-        pin, succeeded, failed = await create_access_for_home(
+        pin, succeeded, unconfirmed, failed = await create_access_for_home(
             session, home, first, last, start_ts, end_ts,
             f"Smoobu Booking {booking_id}", property_name,
         )
@@ -486,8 +523,8 @@ async def handle(request):
 
     if failed:
         log.error(
-            "Zutritt teilweise/komplett fehlgeschlagen (Booking %s, Wohnung %s): erfolgreich=%s, fehlgeschlagen=%s",
-            booking_id, property_name, succeeded, failed,
+            "Zutritt teilweise/komplett fehlgeschlagen (Booking %s, Wohnung %s): erfolgreich=%s, unbestätigt=%s, fehlgeschlagen=%s",
+            booking_id, property_name, succeeded, unconfirmed, failed,
         )
         return web.Response(
             text=f"ERROR: {'; '.join(failed)} (erfolgreich: {', '.join(succeeded) or '-'})",
@@ -495,14 +532,16 @@ async def handle(request):
         )
 
     log.info(
-        "Visitor angelegt: %s %s, Wohnung %s, Booking %s, Systeme: %s",
+        "Visitor angelegt: %s %s, Wohnung %s, Booking %s, Systeme: %s%s",
         first, last, property_name, booking_id, ", ".join(succeeded),
+        f" (unbestätigt: {', '.join(unconfirmed)})" if unconfirmed else "",
     )
 
     await push_pin_to_smoobu(session, booking_id, pin)
 
+    systeme = ", ".join(succeeded + [f"{u} (unbestätigt)" for u in unconfirmed])
     return web.Response(
-        text=f"OK – Visitor {first} {last}, PIN {pin}, Wohnung: {property_name}, Systeme: {', '.join(succeeded)}",
+        text=f"OK – Visitor {first} {last}, PIN {pin}, Wohnung: {property_name}, Systeme: {systeme}",
         status=200,
     )
 
@@ -679,27 +718,35 @@ async def dashboard_create_visitor(request):
         remarks += f" (Buchung {form['booking_id']})"
 
     try:
-        pin, succeeded, failed = await create_access_for_home(
+        pin, succeeded, unconfirmed, failed = await create_access_for_home(
             session, home, first, last, start_ts, end_ts, remarks, home["name"],
         )
     except NoProviderConfigured as e:
         return error_page(str(e), status=422)
 
-    if failed and not succeeded:
+    if failed and not succeeded and not unconfirmed:
         log.error("Manuelle Zutritts-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], failed)
         return error_page(f"Fehler beim Anlegen des Besuchers: {'; '.join(failed)}", status=502)
 
     log.info(
-        "Manueller Visitor angelegt: %s %s, Wohnung %s, Systeme: %s",
+        "Manueller Visitor angelegt: %s %s, Wohnung %s, Systeme: %s%s",
         first, last, home["name"], ", ".join(succeeded),
+        f" (unbestätigt: {', '.join(unconfirmed)})" if unconfirmed else "",
     )
 
+    systeme = ", ".join(succeeded) or "-"
     success = (
         f"Besucher <strong>{html.escape(first)} {html.escape(last)}</strong> angelegt "
-        f"({html.escape(', '.join(succeeded))}). PIN: <span class=\"pin\">{pin}</span>"
+        f"({html.escape(systeme)}). PIN: <span class=\"pin\">{pin}</span>"
     )
+    if unconfirmed:
+        success += (
+            f'</p><p class="msg-error">Hinweis: {html.escape(", ".join(unconfirmed))} wurde angenommen, '
+            f"aber nicht als aktiv bestätigt (Nukis API ist asynchron - ggf. Sync-Verzögerung, bitte "
+            f"in ein paar Minuten im Nuki-Account prüfen)."
+        )
     if failed:
-        success += f'</p><p class="msg-error">Achtung, teilweise fehlgeschlagen: {html.escape("; ".join(failed))}'
+        success += f'</p><p class="msg-error">Achtung, fehlgeschlagen: {html.escape("; ".join(failed))}'
 
     return web.Response(
         text=render_dashboard(bookings, homes, success=success, bookings_error=bookings_error),
