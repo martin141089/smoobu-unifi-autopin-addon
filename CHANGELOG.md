@@ -6,6 +6,27 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.7.0]
+
+### Hinzugefügt
+- **Nuki-Unterstützung.** Wohnungen können jetzt zusätzlich zu (oder statt) UniFi Access
+  auch über Nuki Smart Locks mit Zutritt versehen werden - z.B. eine Wohnung mit zwei
+  Türen, eine über UniFi, eine über Nuki. Neue Optionen: `nuki_api_token` (global) und
+  `homeN_nuki_smartlock_id` (pro Wohnung, optional). Ist für eine Wohnung sowohl UniFi
+  als auch Nuki konfiguriert, bekommen beide Systeme **denselben PIN**.
+- Neuer Hilfsendpunkt `GET /nuki-locks` zur Ermittlung der Nuki-Smartlock-IDs (analog zu
+  `/scan` und `/policies`).
+
+### Geändert
+- **PIN-Erzeugung nutzt nur noch die Ziffern 1-9** (keine „0“ mehr). Physische
+  Nuki-Keypads haben keine 0-Taste; damit funktioniert ein einzelner PIN jetzt zuverlässig
+  auf UniFi- und Nuki-Türen derselben Wohnung.
+
+### Hinweis
+- Nuki-Zutritt per PIN erfordert ein **physisches Nuki Keypad** am Smart Lock.
+- Die Nuki-API-Anbindung ist auf Basis der offiziellen Nuki-Doku umgesetzt, aber noch
+  nicht gegen einen echten Nuki-Account getestet - bitte nach dem ersten Einsatz prüfen.
+
 ## [3.6.1]
 
 ### Geändert
