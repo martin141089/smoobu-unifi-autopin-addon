@@ -6,6 +6,12 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.6.1]
+
+### Geändert
+- `panel_admin: false` gesetzt - der „AutoPIN Dashboard“-Menüpunkt in der HA-Seitenleiste
+  ist jetzt für alle Benutzer sichtbar, nicht nur für Administratoren.
+
 ## [3.6.0]
 
 ### Geändert
