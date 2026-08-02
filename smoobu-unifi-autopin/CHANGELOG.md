@@ -2,6 +2,23 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.8.1]
+
+### Behoben
+- **Nuki meldete "erfolgreich" (2xx), obwohl kein Code am Gerät ankam.** Nukis Web API
+  ist laut Nuki-Entwicklerteam asynchron: ein erfolgreicher HTTP-Status auf die
+  Code-Erstellung bestätigt nur die Annahme des Requests, nicht dass der Code
+  tatsächlich am Smart Lock/Keypad ankommt. Nach dem Anlegen wird jetzt zusätzlich per
+  `GET /smartlock/{id}/auth` geprüft, ob der Code in Nukis Autorisierungsliste
+  erscheint.
+
+### Geändert
+- Neuer Status **"unbestätigt"** für Nuki (getrennt von "fehlgeschlagen"): Wenn der
+  Code angenommen, aber (noch) nicht bestätigt wurde, wird das im Log und im
+  Dashboard/Webhook-Ergebnis klar ausgewiesen, blockiert aber - anders als ein echter
+  Fehler - nicht die PIN-Rückschreibung an Smoobu, da eine kurze Sync-Verzögerung bei
+  Nuki normal sein kann.
+
 ## [3.8.0]
 
 ### Hinzugefügt

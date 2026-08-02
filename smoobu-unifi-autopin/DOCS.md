@@ -240,6 +240,9 @@ Nach Abschluss aller Konfigurationen:
     Konfiguration der jeweiligen Wohnung
 *   Türgruppen werden korrekt zugeordnet
 *   Der Fortschritt jedes Webhooks (angenommen, ignoriert, fehlgeschlagen) ist im Add-on‑Log sichtbar
+*   Nuki-Codes werden nach dem Anlegen zusätzlich verifiziert (Nukis API ist
+    asynchron) — bleibt ein Code unbestätigt, steht das klar im Log/Dashboard, ohne
+    UniFi oder die Smoobu-PIN-Rückschreibung zu blockieren
 
 ***
 
