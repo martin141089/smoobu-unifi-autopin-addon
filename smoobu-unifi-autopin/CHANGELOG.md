@@ -2,6 +2,26 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.5.0]
+
+### Hinzugefügt
+- **Web‑Dashboard unter `/dashboard`** (Basic‑Auth, neue Option `dashboard_password`):
+  - Übersicht aller aktuellen/kommenden Smoobu‑Buchungen (`GET /api/reservations`,
+    HMAC‑signiert, gefiltert auf Buchungen mit Abreise in der Zukunft).
+  - Manuelle Besucher‑Anlage in UniFi Access, wahlweise über eine Buchung vorausgefüllt
+    oder komplett unabhängig von Smoobu (z.&nbsp;B. Handwerker, Reinigung).
+  - Ohne gesetztes `dashboard_password` bleibt `/dashboard` deaktiviert (HTTP 503) - kein
+    zusätzlicher ungeschützter Endpoint standardmäßig.
+- Die Visitor-Erstellung in UniFi Access wurde in eine gemeinsame Funktion
+  (`create_unifi_visitor`) extrahiert, die jetzt sowohl vom automatischen Smoobu-Webhook
+  als auch von der manuellen Dashboard-Anlage genutzt wird.
+
+### Hinweis
+- Die manuelle Besucher-Anlage schreibt den PIN **nicht** an Smoobu zurück (kein Bezug zu
+  einer konkreten Buchung) - der PIN wird stattdessen direkt im Dashboard angezeigt.
+- Basic Auth läuft wie der Rest des Add-ons unverschlüsselt über HTTP im lokalen Netz -
+  ausreichend hinter einem vertrauenswürdigen LAN, aber keine vollwertige Benutzerverwaltung.
+
 ## [3.0.1]
 
 ### Hinzugefügt

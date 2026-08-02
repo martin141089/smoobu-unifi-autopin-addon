@@ -25,6 +25,9 @@ Es ist **komplett sicher**, denn:
 *   Apartment‑Routing basierend auf Smoobu Property Name
 *   Lokaler Tür‑Scan (Door‑Groups + Doors) unter `/scan`
 *   Lokale Access‑Policy‑Suche unter `/policies`
+*   **Web‑Dashboard** unter `/dashboard` (Basic‑Auth‑geschützt): Übersicht aktueller/kommender
+    Smoobu‑Buchungen sowie manuelle Besucher‑Anlage (auch unabhängig von Smoobu, z.&nbsp;B. für
+    Handwerker oder Reinigung)
 *   Korrekte Filterung des Smoobu‑Webhooks nach Event‑Typ (nur neue/geänderte Buchungen lösen eine PIN aus)
 *   Unterstützung für Umlaute & Namens‑Trennung
 *   Nicht‑blockierende Verarbeitung (asynchrones HTTP für UniFi & Smoobu)
@@ -44,6 +47,8 @@ Bevor du die Konfiguration ausfüllst, halte Folgendes bereit:
 *   Ein selbst gewähltes **Webhook‑Secret** (beliebiger, ausreichend langer Zufallsstring)
 *   Die **exakten Namen deiner Wohnungen in Smoobu** (Property Name) — dieser Name muss
     1:1 in `homeN_name` eingetragen werden, da darüber die Zuordnung erfolgt
+*   Optional, aber empfohlen: ein **Dashboard‑Passwort** (`dashboard_password`), falls du das
+    Web‑Dashboard nutzen willst — ohne gesetztes Passwort bleibt `/dashboard` deaktiviert
 
 ***
 
@@ -55,6 +60,7 @@ Bevor du die Konfiguration ausfüllst, halte Folgendes bereit:
 3.  `/scan` und `/policies` aufrufen (siehe unten), um Door‑Group‑ und Policy‑IDs zu ermitteln
 4.  IDs in die Konfiguration nachtragen und Add‑on **neu starten**
 5.  Smoobu‑Webhook einrichten (siehe unten)
+6.  Optional: `/dashboard` mit dem gewählten `dashboard_password` aufrufen
 
 ***
 
@@ -75,6 +81,7 @@ options:
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
+  dashboard_password: ""
 
   homes_count: 1
 
@@ -94,6 +101,10 @@ options:
   home4_policy_id: ""
   home4_door_group_id: ""
 ```
+
+**Wichtig seit Version 3.5:** `dashboard_password` schaltet das Web‑Dashboard (`/dashboard`)
+frei. Bleibt es leer, ist `/dashboard` deaktiviert (Antwort 503) — Buchungsübersicht und
+manuelle Besucher‑Anlage sind dann nicht erreichbar, alles andere funktioniert wie gewohnt.
 
 **Wichtig seit Version 3.0:** Smoobu stellt seine Public API auf HMAC‑Authentifizierung um
 (der alte `Api-Key`‑Header wird am 25.09.2026 abgeschaltet). Dafür wird zusätzlich zum
@@ -139,6 +150,32 @@ Ausgabe‑Beispiel:
 
 ***
 
+# ✅ Dashboard verwenden
+
+Browser öffnen (Basic‑Auth‑Login, Benutzername beliebig, Passwort = `dashboard_password`):
+
+    http://HOMEASSISTANT-IP:8099/dashboard
+
+Das Dashboard zeigt:
+
+*   Eine Tabelle aller aktuellen und kommenden Smoobu‑Buchungen (Gast, Wohnung, An‑/Abreise)
+*   Einen Link „Besucher anlegen“ pro Buchung, der das Formular darunter mit Name, Wohnung
+    und Zeitraum vorausfüllt
+*   Ein Formular zur **manuellen** Besucher‑Anlage — auch komplett unabhängig von einer
+    Smoobu‑Buchung (z.&nbsp;B. für Handwerker oder Reinigungspersonal)
+
+Beim Absenden wird wie beim automatischen Ablauf ein zufälliger PIN erzeugt und ein
+befristeter Visitor in UniFi Access angelegt; der PIN wird direkt im Dashboard angezeigt
+(bei manueller Anlage gibt es **keine** Rückschreibung an Smoobu, da kein Bezug zu einer
+konkreten Buchung besteht).
+
+**Sicherheitshinweis:** Ohne `dashboard_password` ist `/dashboard` komplett deaktiviert.
+Die Basic‑Auth läuft wie der Rest des Add-ons unverschlüsselt über HTTP im lokalen Netz —
+ausreichend für den Betrieb hinter einem vertrauenswürdigen LAN/Home‑Assistant, aber kein
+Ersatz für eine echte Benutzerverwaltung.
+
+***
+
 # ✅ Smoobu Webhook konfigurieren
 
 Webhook URL:
@@ -171,5 +208,5 @@ Nach Abschluss aller Konfigurationen:
 # ✅ Changelog
 
 Siehe die Registerkarte **Changelog** dieses Add-ons oder
-[CHANGELOG.md](https://github.com/martin141089/smoobu-unifi-autopin-addon/blob/2.1.1/smoobu-unifi-autopin/CHANGELOG.md)
+[CHANGELOG.md](https://github.com/martin141089/smoobu-unifi-autopin-addon/blob/main/smoobu-unifi-autopin/CHANGELOG.md)
 im Repository.

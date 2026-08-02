@@ -2,6 +2,7 @@ import base64
 import datetime
 import hashlib
 import hmac
+import html
 import json
 import logging
 import secrets
@@ -9,6 +10,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlencode
 
 import aiohttp
 from aiohttp import web
@@ -34,6 +36,7 @@ SMOOBU_API_SECRET = opts["smoobu_api_secret"]
 UNIFI_IP = opts["unifi_host"]
 UNIFI_TOKEN = opts["unifi_token"]
 WEBHOOK_SECRET = opts["webhook_secret"]
+DASHBOARD_PASSWORD = opts.get("dashboard_password", "").strip()
 HOMES_COUNT = opts["homes_count"]
 
 # Multi-Standort Konfiguration
@@ -57,6 +60,9 @@ for i in range(1, HOMES_COUNT + 1):
 
 if not homes:
     log.warning("Keine Wohnungen konfiguriert - Webhooks können nicht zugeordnet werden")
+
+if not DASHBOARD_PASSWORD:
+    log.warning("Kein dashboard_password gesetzt - /dashboard ist deaktiviert")
 
 UNIFI_BASE = f"https://{UNIFI_IP}:12445/api/v1/developer"
 UNIFI_HEADERS = {
@@ -104,6 +110,40 @@ def find_home(property_name):
 
 def generate_pin():
     return "".join(secrets.choice("0123456789") for _ in range(6))
+
+
+async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company):
+    """Legt einen befristeten Visitor in UniFi Access an und liefert den PIN zurück.
+
+    Gemeinsam genutzt vom automatischen Smoobu-Webhook und der manuellen
+    Besucher-Anlage im Dashboard - lässt aiohttp.ClientError beim Aufrufer aufschlagen.
+    """
+    pin = generate_pin()
+    visitor_payload = {
+        "first_name": first,
+        "last_name": last,
+        "remarks": remarks,
+        "visitor_company": visitor_company,
+        "start_time": start_ts,
+        "end_time": end_ts,
+        "visit_reason": "Business",
+        "resources": [
+            {
+                "id": home["door_group"],
+                "type": "door_group",
+            }
+        ],
+        "pin_code": pin,
+        "access_policy_ids": [home["policy"]],
+    }
+    async with session.post(
+        f"{UNIFI_BASE}/visitors",
+        headers=UNIFI_HEADERS,
+        json=visitor_payload,
+        ssl=False,
+    ) as r:
+        r.raise_for_status()
+    return pin
 
 
 def _smoobu_signature(method, path, query, timestamp, nonce, body_hash):
@@ -168,6 +208,33 @@ async def push_pin_to_smoobu(session, booking_id, pin):
         log.warning("PIN konnte nicht an Smoobu übertragen werden (Booking %s): %s", booking_id, e)
 
 
+async def fetch_smoobu_bookings(session):
+    """Holt aktuelle/kommende Buchungen (Abreise in der Zukunft) aus Smoobu.
+
+    Endpoint gemaess https://docs.smoobu.com/#get-reservations - Query-Parameter
+    werden fuer die HMAC-Signatur alphabetisch sortiert und OHNE fuehrendes '?'
+    signiert (siehe https://docs.smoobu.com/#hmac-authentication).
+    """
+    path = "/api/reservations"
+    params = {
+        "departureFrom": datetime.date.today().isoformat(),
+        "excludeBlocked": "true",
+        "showCancellation": "false",
+        "pageSize": "50",
+        "page": "1",
+    }
+    query = urlencode(sorted(params.items()))
+    headers = smoobu_headers("GET", path, query, b"")
+
+    async with session.get(f"{SMOOBU_API_HOST}{path}?{query}", headers=headers) as r:
+        r.raise_for_status()
+        data = await r.json()
+
+    bookings = data.get("bookings", [])
+    bookings.sort(key=lambda b: b.get("arrival") or "")
+    return bookings
+
+
 async def status(request):
     lines = ["UniFi AutoPIN Add-on läuft ✅", "", "Konfigurierte Wohnungen:", ""]
     if homes:
@@ -178,6 +245,7 @@ async def status(request):
     lines.append("")
     lines.append("Türgruppen-Scan: GET /scan")
     lines.append("Access Policies:  GET /policies")
+    lines.append("Dashboard:        GET /dashboard" + ("" if DASHBOARD_PASSWORD else " (deaktiviert, dashboard_password fehlt)"))
     return web.Response(text="\n".join(lines))
 
 
@@ -283,36 +351,13 @@ async def handle(request):
         log.warning("Ungültiges Datumsformat: %s", e)
         return web.Response(text=f"ERROR: Invalid date format: {e}", status=400)
 
-    pin = generate_pin()
-
-    visitor_payload = {
-        "first_name": first,
-        "last_name": last,
-        "remarks": f"Smoobu Booking {booking_id}",
-        "visitor_company": property_name,
-        "start_time": start_ts,
-        "end_time": end_ts,
-        "visit_reason": "Business",
-        "resources": [
-            {
-                "id": home["door_group"],
-                "type": "door_group",
-            }
-        ],
-        "pin_code": pin,
-        "access_policy_ids": [home["policy"]],
-    }
-
     session = request.app["http"]
 
     try:
-        async with session.post(
-            f"{UNIFI_BASE}/visitors",
-            headers=UNIFI_HEADERS,
-            json=visitor_payload,
-            ssl=False,
-        ) as r:
-            r.raise_for_status()
+        pin = await create_unifi_visitor(
+            session, home, first, last, start_ts, end_ts,
+            f"Smoobu Booking {booking_id}", property_name,
+        )
     except aiohttp.ClientError as e:
         log.error("UniFi Visitor-Erstellung fehlgeschlagen (Booking %s): %s", booking_id, e)
         return web.Response(text=f"UNIFI ERROR: {e}", status=502)
@@ -324,6 +369,221 @@ async def handle(request):
     return web.Response(text=f"OK – Visitor {first} {last}, PIN {pin}, Wohnung: {property_name}", status=200)
 
 
+DASHBOARD_STYLE = """
+    body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    h1, h2 { margin-top: 2rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+    th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
+    th { background: #f2f2f2; }
+    form { margin-top: 0.5rem; display: grid; gap: 0.6rem; max-width: 420px; }
+    label { font-weight: bold; font-size: 0.9rem; }
+    input, select { padding: 0.4rem; font-size: 1rem; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+    .msg-error { background: #fdecea; border: 1px solid #f5c6cb; padding: 0.6rem 1rem; border-radius: 4px; }
+    .msg-success { background: #e6f4ea; border: 1px solid #b7dfc0; padding: 0.6rem 1rem; border-radius: 4px; }
+    .pin { font-size: 1.4rem; font-weight: bold; letter-spacing: 0.1rem; }
+"""
+
+
+def render_dashboard(bookings, homes_list, form=None, error=None, success=None, bookings_error=None):
+    form = form or {}
+
+    def esc(v):
+        return html.escape(str(v)) if v is not None else ""
+
+    rows = []
+    for b in bookings:
+        apartment_name = (b.get("apartment") or {}).get("name", "")
+        booking_id = b.get("id")
+        rows.append(f"""
+            <tr>
+                <td>{esc(b.get('guest-name'))}</td>
+                <td>{esc(apartment_name)}</td>
+                <td>{esc(b.get('arrival'))}</td>
+                <td>{esc(b.get('departure'))}</td>
+                <td><a href="/dashboard?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a></td>
+            </tr>
+        """)
+    bookings_html = "".join(rows) if rows else '<tr><td colspan="5">Keine aktuellen Buchungen gefunden.</td></tr>'
+
+    home_options = ['<option value="">-- Wohnung wählen --</option>']
+    for h in homes_list:
+        selected = " selected" if form.get("home") == h["name"] else ""
+        home_options.append(f'<option value="{esc(h["name"])}"{selected}>{esc(h["name"])}</option>')
+
+    banner = ""
+    if bookings_error:
+        banner += f'<p class="msg-error">Buchungen konnten nicht von Smoobu geladen werden: {esc(bookings_error)}</p>'
+    if error:
+        banner += f'<p class="msg-error">{esc(error)}</p>'
+    if success:
+        banner += f'<p class="msg-success">{success}</p>'
+
+    return f"""<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Smoobu UniFi Access – Dashboard</title>
+<style>{DASHBOARD_STYLE}</style>
+</head>
+<body>
+<h1>Smoobu UniFi Access AutoPIN – Dashboard</h1>
+
+{banner}
+
+<h2>Aktuelle & kommende Buchungen</h2>
+<table>
+    <tr><th>Gast</th><th>Wohnung</th><th>Anreise</th><th>Abreise</th><th></th></tr>
+    {bookings_html}
+</table>
+
+<h2 id="anlegen">Besucher manuell anlegen</h2>
+<p>Unabhängig von Smoobu nutzbar (z.&nbsp;B. für Handwerker oder Reinigung) oder über
+„Besucher anlegen“ bei einer Buchung oben mit Name/Zeitraum vorausgefüllt.</p>
+<form method="post" action="/dashboard/visitor">
+    <div>
+        <label for="home">Wohnung</label><br>
+        <select name="home" id="home" required>{''.join(home_options)}</select>
+    </div>
+    <div>
+        <label for="guest_name">Name des Besuchers</label><br>
+        <input type="text" name="guest_name" id="guest_name" value="{esc(form.get('guest_name'))}" required>
+    </div>
+    <div>
+        <label for="arrival">Anreise</label><br>
+        <input type="date" name="arrival" id="arrival" value="{esc(form.get('arrival'))}" required>
+    </div>
+    <div>
+        <label for="departure">Abreise</label><br>
+        <input type="date" name="departure" id="departure" value="{esc(form.get('departure'))}" required>
+    </div>
+    <input type="hidden" name="booking_id" value="{esc(form.get('booking_id'))}">
+    <button type="submit">Besucher anlegen &amp; PIN erzeugen</button>
+</form>
+
+</body>
+</html>"""
+
+
+async def dashboard_page(request):
+    session = request.app["http"]
+
+    bookings = []
+    bookings_error = None
+    try:
+        bookings = await fetch_smoobu_bookings(session)
+    except aiohttp.ClientError as e:
+        log.warning("Buchungsliste konnte nicht geladen werden: %s", e)
+        bookings_error = str(e)
+
+    form = {}
+    booking_id = request.query.get("booking_id")
+    if booking_id:
+        match = next((b for b in bookings if str(b.get("id")) == booking_id), None)
+        if match:
+            apartment_name = (match.get("apartment") or {}).get("name", "")
+            form = {
+                "home": apartment_name if find_home(apartment_name) else "",
+                "guest_name": match.get("guest-name", ""),
+                "arrival": match.get("arrival", ""),
+                "departure": match.get("departure", ""),
+                "booking_id": booking_id,
+            }
+
+    return web.Response(
+        text=render_dashboard(bookings, homes, form=form, bookings_error=bookings_error),
+        content_type="text/html",
+    )
+
+
+async def dashboard_create_visitor(request):
+    session = request.app["http"]
+    data = await request.post()
+
+    form = {
+        "home": (data.get("home") or "").strip(),
+        "guest_name": (data.get("guest_name") or "").strip(),
+        "arrival": (data.get("arrival") or "").strip(),
+        "departure": (data.get("departure") or "").strip(),
+        "booking_id": (data.get("booking_id") or "").strip(),
+    }
+
+    bookings, bookings_error = [], None
+    try:
+        bookings = await fetch_smoobu_bookings(session)
+    except aiohttp.ClientError as e:
+        bookings_error = str(e)
+
+    def error_page(message, status=400):
+        return web.Response(
+            text=render_dashboard(bookings, homes, form=form, error=message, bookings_error=bookings_error),
+            content_type="text/html",
+            status=status,
+        )
+
+    home = find_home(form["home"])
+    if not home:
+        return error_page(f"Unbekannte Wohnung '{form['home']}'.")
+
+    if not (form["guest_name"] and form["arrival"] and form["departure"]):
+        return error_page("Name, Anreise und Abreise sind Pflichtfelder.")
+
+    try:
+        start_ts = to_unix(form["arrival"])
+        end_ts = to_unix(form["departure"]) + 86399
+    except ValueError as e:
+        return error_page(f"Ungültiges Datumsformat: {e}")
+
+    guest = normalize(form["guest_name"])
+    first, last = split_name(guest)
+    remarks = "Manuell im Dashboard angelegt"
+    if form["booking_id"]:
+        remarks += f" (Buchung {form['booking_id']})"
+
+    try:
+        pin = await create_unifi_visitor(
+            session, home, first, last, start_ts, end_ts, remarks, home["name"],
+        )
+    except aiohttp.ClientError as e:
+        log.error("Manuelle Visitor-Erstellung fehlgeschlagen: %s", e)
+        return error_page(f"UniFi-Fehler beim Anlegen des Besuchers: {e}", status=502)
+
+    log.info("Manueller Visitor angelegt: %s %s, Wohnung %s", first, last, home["name"])
+
+    success = f"Besucher <strong>{html.escape(first)} {html.escape(last)}</strong> angelegt. PIN: <span class=\"pin\">{pin}</span>"
+    return web.Response(
+        text=render_dashboard(bookings, homes, success=success, bookings_error=bookings_error),
+        content_type="text/html",
+    )
+
+
+@web.middleware
+async def dashboard_auth_middleware(request, handler):
+    if not request.path.startswith("/dashboard"):
+        return await handler(request)
+
+    if not DASHBOARD_PASSWORD:
+        return web.Response(text="Dashboard ist deaktiviert (dashboard_password nicht gesetzt)", status=503)
+
+    password = None
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+            _, _, password = decoded.partition(":")
+        except (ValueError, UnicodeDecodeError):
+            password = None
+
+    if password is None or not hmac.compare_digest(password, DASHBOARD_PASSWORD):
+        return web.Response(
+            text="Unauthorized",
+            status=401,
+            headers={"WWW-Authenticate": 'Basic realm="Smoobu UniFi Dashboard"'},
+        )
+
+    return await handler(request)
+
+
 async def make_http_session(app):
     timeout = aiohttp.ClientTimeout(total=10)
     app["http"] = aiohttp.ClientSession(timeout=timeout)
@@ -331,11 +591,13 @@ async def make_http_session(app):
     await app["http"].close()
 
 
-app = web.Application()
+app = web.Application(middlewares=[dashboard_auth_middleware])
 app.cleanup_ctx.append(make_http_session)
 app.router.add_get("/", status)
 app.router.add_get("/scan", scan)
 app.router.add_get("/policies", policies)
+app.router.add_get("/dashboard", dashboard_page)
+app.router.add_post("/dashboard/visitor", dashboard_create_visitor)
 app.router.add_post("/", handle)
 
 if __name__ == "__main__":
