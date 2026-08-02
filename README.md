@@ -11,19 +11,24 @@ Es ist **komplett sicher**, denn:
 ✅ Alle geheimen Daten werden nur lokal im Home Assistant eingegeben  
 ✅ Keine IDs, Tokens oder IPs liegen im GitHub‑Repo  
 ✅ Alle Zugänge werden ausschließlich lokal über HTTPS abgefragt  
-✅ Auto‑Scan der Türgruppen erfolgt lokal und manuell
+✅ Auto‑Scan der Türgruppen erfolgt lokal und manuell  
+✅ Smoobu‑Anbindung über HMAC‑signierte Requests (keine geheimen Keys im Klartext‑Header)
 
 ***
 
 # ✅ Funktionen
 
 *   Automatische Visitor‑Erstellung in UniFi Access
-*   Automatische PIN‑Generierung für Gäste
+*   Automatische PIN‑Generierung für Gäste (kryptographisch sicher)
 *   Automatische Zuordnung einer Access Policy
 *   Multi‑Wohnungs‑Support (1–4 Apartments)
 *   Apartment‑Routing basierend auf Smoobu Property Name
-*   Lokaler Tür‑Scan (Door‑Groups + Doors)
+*   Lokaler Tür‑Scan (Door‑Groups + Doors) unter `/scan`
+*   Lokale Access‑Policy‑Suche unter `/policies`
+*   Korrekte Filterung des Smoobu‑Webhooks nach Event‑Typ (nur neue/geänderte Buchungen lösen eine PIN aus)
 *   Unterstützung für Umlaute & Namens‑Trennung
+*   Nicht‑blockierende Verarbeitung (asynchrones HTTP für UniFi & Smoobu)
+*   Strukturierte Logs im Add-on‑Protokoll für jeden Webhook, Fehler und abgelehnte Requests
 *   Keine sensiblen Daten im Code
 
 ***
@@ -50,6 +55,7 @@ Das Add-on bietet dynamische Wohnungsunterstützung:
 ```yaml
 options:
   smoobu_api_key: ""
+  smoobu_api_secret: ""
   unifi_host: ""
   unifi_token: ""
   webhook_secret: ""
@@ -73,17 +79,23 @@ options:
   home4_door_group_id: ""
 ```
 
+**Wichtig seit Version 3.0:** Smoobu stellt seine Public API auf HMAC‑Authentifizierung um
+(der alte `Api-Key`‑Header wird am 25.09.2026 abgeschaltet). Dafür wird zusätzlich zum
+bestehenden `smoobu_api_key` ein `smoobu_api_secret` benötigt. Beide findest du in deinem
+Smoobu‑Account unter **Einstellungen → API**.
+
 ***
 
-# ✅ Door‑Scan verwenden
+# ✅ Door‑Scan & Policy‑Suche verwenden
 
-Das Add-on enthält eine lokale Seite zur Erkennung aller Türen & Türgruppen.
+Das Add-on enthält zwei lokale Hilfsseiten, um die für die Konfiguration nötigen IDs zu finden —
+beide laufen auf demselben Port wie der Webhook (8099), ein separater Port ist nicht mehr nötig.
 
-### Browser öffnen:
+### Türgruppen & Türen:
 
-    http://HOMEASSISTANT-IP:8098
+    http://HOMEASSISTANT-IP:8099/scan
 
-### Ausgabe Beispiel:
+Ausgabe‑Beispiel:
 
     === TÜRGRUPPE ===
     NAME: EG Wohnung
@@ -96,10 +108,15 @@ Das Add-on enthält eine lokale Seite zur Erkennung aller Türen & Türgruppen.
     ID:   e311ca94-...
        - TÜR: Eingang DG → d5573467-...
 
+### Access Policies:
+
+    http://HOMEASSISTANT-IP:8099/policies
+
 ### Diese IDs trägst du im Add-on ein:
 
 *   `home1_door_group_id:`
-*   `home2_door_group_id:`
+*   `home1_policy_id:`
+*   `home2_door_group_id:` / `home2_policy_id:`
 *   …
 
 ***
@@ -110,10 +127,11 @@ Webhook URL:
 
     http://HOMEASSISTANT-IP:8099/?secret=DEIN_SECRET
 
-Events aktivieren:
-
-*   Buchung erstellt
-*   Buchung geändert
+Smoobu sendet an diese eine URL **alle** Ereignistypen (neue Buchung, geänderte Buchung,
+Stornierung, Preis-/Verfügbarkeitsänderungen, neue Nachrichten, …) — eine Auswahl einzelner
+Events ist in Smoobu selbst nicht möglich. Das Add-on filtert deshalb intern und reagiert nur
+auf `newReservation` und `updateReservation`; alle anderen Ereignisse werden mit HTTP 200
+quittiert und ignoriert, ohne dass ein Visitor angelegt wird.
 
 Platzhalter in Nachrichten:
 
@@ -129,6 +147,7 @@ Nach Abschluss aller Konfigurationen:
 *   Gäste erhalten automatisch PINs
 *   Visitors erscheinen im UniFi Access
 *   Türgruppen werden korrekt zugeordnet
+*   Der Fortschritt jedes Webhooks (angenommen, ignoriert, fehlgeschlagen) ist im Add-on‑Log sichtbar
 
 ***
 
@@ -137,8 +156,14 @@ Nach Abschluss aller Konfigurationen:
     /
     ├── config.yaml
     ├── run.py
-    ├── scan.py
     ├── README.md
+    ├── CHANGELOG.md
     └── Dockerfile
+
+***
+
+# ✅ Changelog
+
+Siehe [CHANGELOG.md](CHANGELOG.md) für die vollständige Versionshistorie.
 
 ***
