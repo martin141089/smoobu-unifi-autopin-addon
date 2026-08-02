@@ -86,7 +86,9 @@ Das Add-on bietet dynamische Wohnungsunterstützung:
     *   Smoobu‑Wohnungsname
     *   UniFi Access: Access Policy ID + Door Group ID
     *   Nuki: Smart-Lock-ID (`home1_nuki_smartlock_id` usw.) — nur ausfüllen, wenn diese
-        Wohnung (oder eine ihrer Türen) über Nuki läuft
+        Wohnung (oder eine ihrer Türen) über Nuki läuft. Sowohl die Dezimalform (z.&nbsp;B.
+        aus `/nuki-locks`) als auch die Hex-Form (z.&nbsp;B. `442f2ae4`, wie sie oft in der
+        Nuki-App angezeigt wird) werden akzeptiert.
 
 ```yaml
 options:
