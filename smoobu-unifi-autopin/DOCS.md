@@ -33,6 +33,31 @@ Es ist **komplett sicher**, denn:
 
 ***
 
+# ✅ Voraussetzungen
+
+Bevor du die Konfiguration ausfüllst, halte Folgendes bereit:
+
+*   **UniFi Access:** IP/Hostname des Controllers sowie ein API‑Token
+    (UniFi Access → Einstellungen → Sicherheit → **Erweiterte API-Einstellungen** → API‑Token erstellen)
+*   **Smoobu:** `smoobu_api_key` **und** `smoobu_api_secret`
+    (Smoobu → Einstellungen → **API**)
+*   Ein selbst gewähltes **Webhook‑Secret** (beliebiger, ausreichend langer Zufallsstring)
+*   Die **exakten Namen deiner Wohnungen in Smoobu** (Property Name) — dieser Name muss
+    1:1 in `homeN_name` eingetragen werden, da darüber die Zuordnung erfolgt
+
+***
+
+# ✅ Ersteinrichtung – empfohlene Reihenfolge
+
+1.  Konfiguration öffnen und alle Werte aus „Voraussetzungen“ eintragen (Türgruppen‑ und
+    Policy‑IDs können zunächst leer bleiben)
+2.  Add-on **starten**
+3.  `/scan` und `/policies` aufrufen (siehe unten), um Door‑Group‑ und Policy‑IDs zu ermitteln
+4.  IDs in die Konfiguration nachtragen und Add‑on **neu starten**
+5.  Smoobu‑Webhook einrichten (siehe unten)
+
+***
+
 # ✅ Konfiguration
 
 Das Add-on bietet dynamische Wohnungsunterstützung:
