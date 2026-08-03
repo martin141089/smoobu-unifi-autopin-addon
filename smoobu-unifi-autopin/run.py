@@ -656,6 +656,7 @@ async def handle(request):
 
 
 DASHBOARD_STYLE = """
+    * { box-sizing: border-box; }
     body { font-family: -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #222; }
     h1, h2 { margin-top: 2rem; }
     table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
@@ -665,11 +666,41 @@ DASHBOARD_STYLE = """
     .field-row { display: flex; gap: 0.6rem; }
     .field-row > div { flex: 1; }
     label { font-weight: bold; font-size: 0.9rem; }
-    input, select { padding: 0.4rem; font-size: 1rem; width: 100%; box-sizing: border-box; }
-    button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-    .msg-error { background: #fdecea; border: 1px solid #f5c6cb; padding: 0.6rem 1rem; border-radius: 4px; }
+    input, select { padding: 0.5rem; font-size: 1rem; width: 100%; box-sizing: border-box; }
+    button { padding: 0.6rem 1rem; font-size: 1rem; cursor: pointer; }
+    .msg-error { background: #fdecea; border: 1px solid #f5c6cb; padding: 0.6rem 1rem; border-radius: 4px; overflow-wrap: anywhere; }
     .msg-success { background: #e6f4ea; border: 1px solid #b7dfc0; padding: 0.6rem 1rem; border-radius: 4px; }
     .pin { font-size: 1.4rem; font-weight: bold; letter-spacing: 0.1rem; }
+
+    @media (max-width: 640px) {
+        body { margin: 1rem auto; padding: 0 0.75rem; }
+        h1 { font-size: 1.4rem; margin-top: 0.5rem; }
+        h2 { font-size: 1.15rem; margin-top: 1.5rem; }
+        form { max-width: none; }
+        button { width: 100%; }
+
+        table.stack, table.stack thead, table.stack tbody, table.stack th, table.stack td, table.stack tr {
+            display: block;
+        }
+        table.stack thead { position: absolute; left: -9999px; top: -9999px; }
+        table.stack tr {
+            border: 1px solid #ddd; border-radius: 8px; margin-bottom: 0.6rem; padding: 0.2rem 0;
+        }
+        table.stack td {
+            display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;
+            padding: 0.45rem 0.7rem; border-bottom: 1px dashed #eee; text-align: right;
+        }
+        table.stack td:last-child { border-bottom: none; }
+        table.stack td::before {
+            content: attr(data-label); font-weight: bold; color: #555; text-align: left;
+        }
+        table.stack td.empty-row {
+            display: block; text-align: center; color: #666; padding: 0.8rem 0.7rem;
+        }
+        table.stack td.empty-row::before { content: none; }
+        table.stack td.td-action { justify-content: center; }
+        table.stack td.td-action::before { content: none; }
+    }
 """
 
 
@@ -686,29 +717,29 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
         booking_id = b.get("id")
         rows.append(f"""
             <tr>
-                <td>{esc(b.get('guest-name'))}</td>
-                <td>{esc(apartment_name)}</td>
-                <td>{esc(b.get('arrival'))}</td>
-                <td>{esc(b.get('departure'))}</td>
-                <td><a href="?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a></td>
+                <td data-label="Gast">{esc(b.get('guest-name'))}</td>
+                <td data-label="Wohnung">{esc(apartment_name)}</td>
+                <td data-label="Anreise">{esc(b.get('arrival'))}</td>
+                <td data-label="Abreise">{esc(b.get('departure'))}</td>
+                <td class="td-action"><a href="?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a></td>
             </tr>
         """)
-    bookings_html = "".join(rows) if rows else '<tr><td colspan="5">Keine aktuellen Buchungen gefunden.</td></tr>'
+    bookings_html = "".join(rows) if rows else '<tr><td colspan="5" class="empty-row">Keine aktuellen Buchungen gefunden.</td></tr>'
 
     history_rows = []
     for h in history:
         name = f"{h.get('first_name', '')} {h.get('last_name', '')}".strip()
         history_rows.append(f"""
             <tr>
-                <td>{esc(name)}</td>
-                <td>{esc(h.get('home'))}</td>
-                <td class="pin">{esc(h.get('pin'))}</td>
-                <td>{esc(format_ts(h['start_ts']))} – {esc(format_ts(h['end_ts']))}</td>
-                <td>{esc(', '.join(h.get('systems', [])))}</td>
-                <td>{esc(h.get('source'))}</td>
+                <td data-label="Gast">{esc(name)}</td>
+                <td data-label="Wohnung">{esc(h.get('home'))}</td>
+                <td data-label="PIN" class="pin">{esc(h.get('pin'))}</td>
+                <td data-label="Zeitraum">{esc(format_ts(h['start_ts']))} – {esc(format_ts(h['end_ts']))}</td>
+                <td data-label="System(e)">{esc(', '.join(h.get('systems', [])))}</td>
+                <td data-label="Quelle">{esc(h.get('source'))}</td>
             </tr>
         """)
-    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="6">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
+    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="6" class="empty-row">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
 
     home_options = ['<option value="">-- Wohnung wählen --</option>']
     for h in homes_list:
@@ -727,6 +758,7 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Smoobu UniFi Access – Dashboard</title>
 <style>{DASHBOARD_STYLE}</style>
 </head>
@@ -736,15 +768,15 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
 {banner}
 
 <h2>Aktuelle & kommende Besucher</h2>
-<table>
-    <tr><th>Gast</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr>
-    {history_html}
+<table class="stack">
+    <thead><tr><th>Gast</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr></thead>
+    <tbody>{history_html}</tbody>
 </table>
 
 <h2>Aktuelle & kommende Buchungen</h2>
-<table>
-    <tr><th>Gast</th><th>Wohnung</th><th>Anreise</th><th>Abreise</th><th></th></tr>
-    {bookings_html}
+<table class="stack">
+    <thead><tr><th>Gast</th><th>Wohnung</th><th>Anreise</th><th>Abreise</th><th></th></tr></thead>
+    <tbody>{bookings_html}</tbody>
 </table>
 
 <h2 id="anlegen">Besucher manuell anlegen</h2>

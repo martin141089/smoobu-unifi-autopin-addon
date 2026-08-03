@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.9.1]
+
+### Geändert
+- **Dashboard für Handy optimiert:** Die Tabellen „Aktuelle & kommende Besucher“ und
+  „Aktuelle & kommende Buchungen“ wurden auf schmalen Bildschirmen bisher horizontal
+  abgeschnitten. Sie werden jetzt auf Smartphones automatisch als Karten mit
+  Beschriftung je Feld dargestellt statt als breite Tabelle. Zusätzlich: fehlendes
+  Viewport-Meta-Tag ergänzt (korrekte Skalierung auf Mobilgeräten), Überschriften auf
+  kleinen Bildschirmen verkleinert, Button „Besucher anlegen & PIN erzeugen“ nimmt auf
+  dem Handy die volle Breite ein.
+
 ## [3.9.0]
 
 ### Hinzugefügt

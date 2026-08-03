@@ -6,6 +6,17 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.9.1]
+
+### Geändert
+- **Dashboard für Handy optimiert:** Die Tabellen „Aktuelle & kommende Besucher“ und
+  „Aktuelle & kommende Buchungen“ wurden auf schmalen Bildschirmen bisher horizontal
+  abgeschnitten. Sie werden jetzt auf Smartphones automatisch als Karten mit
+  Beschriftung je Feld dargestellt statt als breite Tabelle. Zusätzlich: fehlendes
+  Viewport-Meta-Tag ergänzt (korrekte Skalierung auf Mobilgeräten), Überschriften auf
+  kleinen Bildschirmen verkleinert, Button „Besucher anlegen & PIN erzeugen“ nimmt auf
+  dem Handy die volle Breite ein.
+
 ## [3.9.0]
 
 ### Hinzugefügt
