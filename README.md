@@ -229,9 +229,13 @@ Das Dashboard zeigt:
 Beim Absenden wird wie beim automatischen Ablauf ein zufälliger PIN erzeugt und je nach
 Konfiguration der gewählten Wohnung ein befristeter Visitor in UniFi Access und/oder ein
 Keypad-Code auf dem zugehörigen Nuki Smart Lock angelegt; der PIN wird direkt im Dashboard
-angezeigt und erscheint anschließend auch in der Besucherübersicht (bei manueller Anlage
-gibt es **keine** Rückschreibung an Smoobu, da kein Bezug zu einer konkreten Buchung
-besteht).
+angezeigt und erscheint anschließend auch in der Besucherübersicht. Wurde der Besucher über
+„Besucher anlegen“ **aus einer konkreten Smoobu‑Buchung heraus** angelegt, wird der PIN
+zusätzlich als `doorPin`‑Platzhalter an genau diese Buchung übertragen — genau wie beim
+automatischen Webhook‑Ablauf, damit er z.&nbsp;B. per `[doorPin]` in einer Smoobu‑Nachricht
+an den Gast verschickt werden kann. Nur bei komplett unabhängiger, manueller Anlage (ohne
+Buchungsbezug, z.&nbsp;B. für Handwerker oder Reinigungspersonal) entfällt die
+Rückschreibung, da es keine Buchung gibt, an die geschrieben werden könnte.
 
 **Sicherheitshinweis:** Der interne Dashboard‑Port (8100) wird bewusst **nicht** direkt im
 Netzwerk exponiert — er ist ausschließlich über den Ingress‑Proxy von Home Assistant

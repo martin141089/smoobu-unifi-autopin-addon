@@ -6,6 +6,19 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.10.2]
+
+### Behoben
+- **PIN wurde bei manueller Besucher-Anlage aus einer Smoobu-Buchung heraus nicht an
+  Smoobu zurückgeschrieben.** Beim automatischen Webhook-Ablauf wurde der PIN schon
+  immer als `doorPin`-Platzhalter an die Buchung übertragen (nutzbar über `[doorPin]`
+  in Nachrichtenvorlagen); beim manuellen Anlegen über „Besucher anlegen“ bei einer
+  konkreten Buchung im Dashboard fehlte dieser Schritt komplett, wodurch der PIN nicht
+  automatisiert an den Gast verschickt werden konnte. Betroffen sind nur Besucher, die
+  über eine ausgewählte Smoobu-Buchung angelegt wurden - rein manuelle Besucher ohne
+  Buchungsbezug (z.&nbsp;B. Handwerker) sind unverändert, da es dort keine Buchung zum
+  Zurückschreiben gibt.
+
 ## [3.10.1]
 
 ### Geändert
