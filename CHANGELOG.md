@@ -6,6 +6,19 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.10.0]
+
+### Hinzugefügt
+- **Besucherübersicht zeigt jetzt auch UniFi-Visitors, die nicht über dieses Add-on
+  angelegt wurden** (z.&nbsp;B. manuell in der UniFi-Access-App, oder von vor
+  Einführung der lokalen Besucher-Historie in 3.9.0). Das Dashboard fragt dafür
+  zusätzlich aktuelle/kommende Visitors direkt bei UniFi Access ab und ergänzt sie um
+  bereits bekannte Einträge, statt sie zu duplizieren. Da UniFi Access den PIN im
+  Nachhinein nicht mehr im Klartext zurückgibt, wird er bei diesen Einträgen als
+  „unbekannt" ausgewiesen (mit erklärendem Hinweistext im Dashboard). Schlägt der
+  zusätzliche UniFi-Abruf fehl, wird einfach nur die lokale Historie gezeigt
+  (best-effort, kein Fehler im Dashboard).
+
 ## [3.9.1]
 
 ### Geändert
