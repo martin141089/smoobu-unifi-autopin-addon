@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.10.1]
+
+### Geändert
+- **Dashboard übersichtlicher gestaltet:**
+  - Neue Status-Spalte in der Besucherübersicht: farbiger Badge „Gerade vor Ort“
+    (grün, Zeitraum läuft aktuell) bzw. „Kommend“ (blau) auf einen Blick.
+  - Buchungen, für die bereits ein Besucher/PIN angelegt wurde, zeigen in der
+    Buchungstabelle jetzt „✓ bereits angelegt“ statt eines erneut klickbaren Links
+    „Besucher anlegen“ - weniger Redundanz zwischen Besucher- und Buchungstabelle.
+
 ## [3.10.0]
 
 ### Hinzugefügt

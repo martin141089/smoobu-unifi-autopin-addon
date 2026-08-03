@@ -764,6 +764,13 @@ DASHBOARD_STYLE = """
     .pin { font-size: 1.4rem; font-weight: bold; letter-spacing: 0.1rem; }
     .pin-unknown { font-size: 0.95rem; font-weight: normal; font-style: italic; letter-spacing: normal; color: #888; }
     .hint { font-size: 0.85rem; color: #666; margin-top: 0.3rem; }
+    .badge {
+        display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px;
+        font-size: 0.78rem; font-weight: bold; white-space: nowrap;
+    }
+    .badge-active { background: #e6f4ea; color: #1e7e34; }
+    .badge-upcoming { background: #eaf1fb; color: #2c5aa0; }
+    .badge-done { background: #f2f2f2; color: #555; }
 
     @media (max-width: 640px) {
         body { margin: 1rem auto; padding: 0 0.75rem; }
@@ -805,17 +812,24 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
     def esc(v):
         return html.escape(str(v)) if v is not None else ""
 
+    now = time.time()
+    known_booking_ids = {str(h.get("booking_id")) for h in history if h.get("booking_id")}
+
     rows = []
     for b in bookings:
         apartment_name = (b.get("apartment") or {}).get("name", "")
         booking_id = b.get("id")
+        if booking_id is not None and str(booking_id) in known_booking_ids:
+            action_cell = '<span class="badge badge-done">✓ bereits angelegt</span>'
+        else:
+            action_cell = f'<a href="?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a>'
         rows.append(f"""
             <tr>
                 <td data-label="Gast">{esc(b.get('guest-name'))}</td>
                 <td data-label="Wohnung">{esc(apartment_name)}</td>
                 <td data-label="Anreise">{esc(b.get('arrival'))}</td>
                 <td data-label="Abreise">{esc(b.get('departure'))}</td>
-                <td class="td-action"><a href="?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a></td>
+                <td class="td-action">{action_cell}</td>
             </tr>
         """)
     bookings_html = "".join(rows) if rows else '<tr><td colspan="5" class="empty-row">Keine aktuellen Buchungen gefunden.</td></tr>'
@@ -824,9 +838,13 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
     for h in history:
         name = f"{h.get('first_name', '')} {h.get('last_name', '')}".strip()
         pin_class = "pin" if h.get("pin") != "unbekannt" else "pin pin-unknown"
+        is_active = h.get("start_ts", 0) <= now <= h.get("end_ts", 0)
+        status_label = "Gerade vor Ort" if is_active else "Kommend"
+        status_class = "badge badge-active" if is_active else "badge badge-upcoming"
         history_rows.append(f"""
             <tr>
                 <td data-label="Gast">{esc(name)}</td>
+                <td data-label="Status"><span class="{status_class}">{status_label}</span></td>
                 <td data-label="Wohnung">{esc(h.get('home'))}</td>
                 <td data-label="PIN" class="{pin_class}">{esc(h.get('pin'))}</td>
                 <td data-label="Zeitraum">{esc(format_ts(h['start_ts']))} – {esc(format_ts(h['end_ts']))}</td>
@@ -834,7 +852,7 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
                 <td data-label="Quelle">{esc(h.get('source'))}</td>
             </tr>
         """)
-    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="6" class="empty-row">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
+    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="7" class="empty-row">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
     unknown_pin_note = ""
     if any(h.get("pin") == "unbekannt" for h in history):
         unknown_pin_note = (
@@ -871,7 +889,7 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
 
 <h2>Aktuelle & kommende Besucher</h2>
 <table class="stack">
-    <thead><tr><th>Gast</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr></thead>
+    <thead><tr><th>Gast</th><th>Status</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr></thead>
     <tbody>{history_html}</tbody>
 </table>
 {unknown_pin_note}
