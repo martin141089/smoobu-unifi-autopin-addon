@@ -6,6 +6,22 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.9.0]
+
+### Hinzugefügt
+- **Besucherübersicht im Dashboard:** Da UniFi Access den Klartext-PIN nach der
+  Anlage nicht mehr zurückgibt (nur ein Token), merkt sich das Add-on jetzt selbst,
+  welcher Besuch mit welchem PIN angelegt wurde. Das Dashboard zeigt eine neue Tabelle
+  "Aktuelle & kommende Besucher" mit Gast, Wohnung, PIN, Zeitraum, verwendetem/n
+  System(en) (UniFi/Nuki) und Quelle (Smoobu-Webhook oder manuell). Es werden nur
+  aktuelle und kommende Besuche angezeigt, vergangene Aufenthalte fallen automatisch
+  raus.
+- **Konfigurierbare Check-in-/Check-out-Zeiten:** Neue Optionen `default_checkin_time`
+  (Standard `15:00`) und `default_checkout_time` (Standard `11:00`) ersetzen das bisher
+  feste Zeitfenster von 00:00-23:59 Uhr. Fehlt bei einer Smoobu-Buchung die konkrete
+  Uhrzeit, greifen diese Standardzeiten. Sowohl automatisch per Webhook als auch
+  manuell im Dashboard lässt sich die Uhrzeit zusätzlich zum Datum pro Besuch anpassen.
+
 ## [3.8.1]
 
 ### Behoben

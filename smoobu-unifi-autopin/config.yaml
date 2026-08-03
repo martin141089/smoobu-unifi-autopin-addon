@@ -1,5 +1,5 @@
 name: "Smoobu UniFi Access AutoPIN"
-version: "3.8.1"
+version: "3.9.0"
 slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
@@ -30,6 +30,8 @@ options:
   webhook_secret: ""
   nuki_api_token: ""
   admin_email: ""
+  default_checkin_time: "15:00"
+  default_checkout_time: "11:00"
   homes_count: 1
 
   home1_name: ""
@@ -60,6 +62,8 @@ schema:
   webhook_secret: str
   nuki_api_token: str?
   admin_email: email?
+  default_checkin_time: str?
+  default_checkout_time: str?
   homes_count: int
 
   home1_name: str?

@@ -2,6 +2,24 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.9.0]
+
+### Hinzugefügt
+- **Besucherübersicht im Dashboard:** Da UniFi Access den Klartext-PIN nach der
+  Anlage nicht mehr zurückgibt (nur ein Token), merkt sich das Add-on jetzt selbst,
+  welcher Besuch mit welchem PIN angelegt wurde. Das Dashboard zeigt eine neue Tabelle
+  "Aktuelle & kommende Besucher" mit Gast, Wohnung, PIN, Zeitraum, verwendetem/n
+  System(en) (UniFi/Nuki) und Quelle (Smoobu-Webhook oder manuell). Vergangene
+  Aufenthalte werden automatisch entfernt, es werden nur aktuelle und kommende
+  Besuche angezeigt.
+- **Konfigurierbare Check-in-/Check-out-Zeiten:** Neue Optionen `default_checkin_time`
+  (Standard `15:00`) und `default_checkout_time` (Standard `11:00`) ersetzen das bisher
+  feste Zeitfenster von 00:00-23:59 Uhr. Wenn Smoobu für eine Buchung keine konkrete
+  Uhrzeit liefert (das `check-in`/`check-out`-Feld ist bei Smoobu häufig leer), greifen
+  diese Standardzeiten. Sowohl beim automatischen Anlegen per Webhook als auch bei der
+  manuellen Anlage im Dashboard lässt sich die Uhrzeit zusätzlich zum Datum individuell
+  pro Besuch anpassen.
+
 ## [3.8.1]
 
 ### Behoben
