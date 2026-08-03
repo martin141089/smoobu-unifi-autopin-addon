@@ -211,7 +211,10 @@ Das Dashboard zeigt:
     (UniFi/Nuki) und Quelle (Smoobu‑Webhook oder manuell angelegt). Da UniFi Access den
     Klartext‑PIN nach der Anlage nicht mehr zurückgibt, merkt sich das Add-on diese
     Zuordnung selbst lokal. Vergangene Aufenthalte werden automatisch ausgeblendet, es
-    werden nur aktuelle und kommende Besuche angezeigt.
+    werden nur aktuelle und kommende Besuche angezeigt. Zusätzlich werden Visitors
+    angezeigt, die direkt in UniFi Access existieren, aber nicht über dieses Add-on
+    angelegt wurden (z.&nbsp;B. manuell in der UniFi-App) — hier ist der PIN als
+    „unbekannt“ markiert, da UniFi ihn nachträglich nicht mehr im Klartext herausgibt.
 *   Eine Tabelle aller aktuellen und kommenden Smoobu‑Buchungen (Gast, Wohnung, An‑/Abreise)
 *   Einen Link „Besucher anlegen“ pro Buchung, der das Formular darunter mit Name, Wohnung
     und Zeitraum (inkl. Uhrzeit, sofern von Smoobu geliefert, sonst Standardzeiten) vorausfüllt

@@ -161,6 +161,13 @@ def find_home(property_name):
     return None
 
 
+def find_home_by_door_group(door_group_id):
+    for h in homes:
+        if h["door_group"] and h["door_group"] == door_group_id:
+            return h
+    return None
+
+
 def generate_pin():
     # Nuki-Keypads haben keine "0"-Taste, PINs bestehen daher grundsaetzlich nur aus
     # den Ziffern 1-9 - so funktioniert derselbe PIN auf UniFi- UND Nuki-Tueren.
@@ -374,6 +381,90 @@ async def get_current_history():
             _save_history(current)
         current.sort(key=lambda e: e["start_ts"])
         return current
+
+
+async def fetch_unifi_visitors(session):
+    """Holt alle Visitors direkt aus UniFi Access (paginiert), inklusive solcher, die
+    nicht ueber dieses Add-on angelegt wurden (z.B. manuell in der UniFi-App, oder von
+    vor Einfuehrung der lokalen Besucher-Historie)."""
+    visitors = []
+    page_num = 1
+    while True:
+        async with session.get(
+            f"{UNIFI_BASE}/visitors",
+            headers=UNIFI_HEADERS,
+            params={"page_num": page_num, "page_size": 100},
+            ssl=False,
+        ) as r:
+            r.raise_for_status()
+            payload = await r.json()
+        page = payload.get("data", [])
+        visitors.extend(page)
+        if len(page) < 100 or page_num >= 20:
+            break
+        page_num += 1
+    return visitors
+
+
+async def build_display_history(session):
+    """Besucher-Uebersicht fuers Dashboard: lokale Historie (mit echtem PIN, von
+    diesem Add-on angelegt) ergaenzt um Visitors, die zwar aktuell/kommend in UniFi
+    Access existieren, aber nicht in der lokalen Historie stehen (z.B. manuell in der
+    UniFi-App angelegt oder von vor Einfuehrung dieser Funktion). Fuer diese ist der
+    PIN nicht auslesbar, da UniFi Access seit einiger Zeit nur noch ein Token statt
+    des Klartext-PINs zurueckgibt - er wird daher als "unbekannt" markiert. Schlaegt
+    der UniFi-Abruf fehl, wird einfach nur die lokale Historie gezeigt (best-effort)."""
+    history = await get_current_history()
+
+    if not any(h["door_group"] and h["policy"] for h in homes):
+        return history
+
+    try:
+        raw_visitors = await fetch_unifi_visitors(session)
+    except aiohttp.ClientError as e:
+        log.warning("UniFi-Visitors konnten nicht fürs Dashboard geladen werden: %s", e)
+        return history
+
+    now = time.time()
+    known_keys = {
+        (e.get("first_name", "").strip().lower(), e.get("last_name", "").strip().lower(),
+         e.get("start_ts"), e.get("end_ts"))
+        for e in history
+    }
+
+    extras = []
+    for v in raw_visitors:
+        start_time = v.get("start_time")
+        end_time = v.get("end_time")
+        if not start_time or not end_time or end_time < now:
+            continue
+        first = (v.get("first_name") or "").strip()
+        last = (v.get("last_name") or "").strip()
+        key = (first.lower(), last.lower(), start_time, end_time)
+        if key in known_keys:
+            continue
+
+        home_name = "-"
+        for res in (v.get("resources") or []):
+            home = find_home_by_door_group(res.get("id"))
+            if home:
+                home_name = home["name"]
+                break
+
+        extras.append({
+            "home": home_name,
+            "first_name": first,
+            "last_name": last,
+            "pin": "unbekannt",
+            "start_ts": start_time,
+            "end_ts": end_time,
+            "systems": ["UniFi Access"],
+            "source": "Nur in UniFi (nicht über Add-on angelegt)",
+        })
+
+    merged = history + extras
+    merged.sort(key=lambda e: e.get("start_ts") or 0)
+    return merged
 
 
 def _smoobu_signature(method, path, query, timestamp, nonce, body_hash):
@@ -671,6 +762,8 @@ DASHBOARD_STYLE = """
     .msg-error { background: #fdecea; border: 1px solid #f5c6cb; padding: 0.6rem 1rem; border-radius: 4px; overflow-wrap: anywhere; }
     .msg-success { background: #e6f4ea; border: 1px solid #b7dfc0; padding: 0.6rem 1rem; border-radius: 4px; }
     .pin { font-size: 1.4rem; font-weight: bold; letter-spacing: 0.1rem; }
+    .pin-unknown { font-size: 0.95rem; font-weight: normal; font-style: italic; letter-spacing: normal; color: #888; }
+    .hint { font-size: 0.85rem; color: #666; margin-top: 0.3rem; }
 
     @media (max-width: 640px) {
         body { margin: 1rem auto; padding: 0 0.75rem; }
@@ -700,6 +793,7 @@ DASHBOARD_STYLE = """
         table.stack td.empty-row::before { content: none; }
         table.stack td.td-action { justify-content: center; }
         table.stack td.td-action::before { content: none; }
+        table.stack td.pin-unknown::before { font-style: normal; font-weight: bold; color: #555; }
     }
 """
 
@@ -729,17 +823,25 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
     history_rows = []
     for h in history:
         name = f"{h.get('first_name', '')} {h.get('last_name', '')}".strip()
+        pin_class = "pin" if h.get("pin") != "unbekannt" else "pin pin-unknown"
         history_rows.append(f"""
             <tr>
                 <td data-label="Gast">{esc(name)}</td>
                 <td data-label="Wohnung">{esc(h.get('home'))}</td>
-                <td data-label="PIN" class="pin">{esc(h.get('pin'))}</td>
+                <td data-label="PIN" class="{pin_class}">{esc(h.get('pin'))}</td>
                 <td data-label="Zeitraum">{esc(format_ts(h['start_ts']))} – {esc(format_ts(h['end_ts']))}</td>
                 <td data-label="System(e)">{esc(', '.join(h.get('systems', [])))}</td>
                 <td data-label="Quelle">{esc(h.get('source'))}</td>
             </tr>
         """)
     history_html = "".join(history_rows) if history_rows else '<tr><td colspan="6" class="empty-row">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
+    unknown_pin_note = ""
+    if any(h.get("pin") == "unbekannt" for h in history):
+        unknown_pin_note = (
+            '<p class="hint">PIN „unbekannt“: Dieser Besucher existiert in UniFi Access, wurde aber nicht '
+            'über dieses Dashboard/den Webhook angelegt (z.&nbsp;B. manuell in der UniFi-App oder von vor '
+            'dieser Funktion) - UniFi gibt den PIN im Nachhinein nicht mehr im Klartext zurück.</p>'
+        )
 
     home_options = ['<option value="">-- Wohnung wählen --</option>']
     for h in homes_list:
@@ -772,6 +874,7 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
     <thead><tr><th>Gast</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr></thead>
     <tbody>{history_html}</tbody>
 </table>
+{unknown_pin_note}
 
 <h2>Aktuelle & kommende Buchungen</h2>
 <table class="stack">
@@ -846,7 +949,7 @@ async def dashboard_page(request):
                 "booking_id": booking_id,
             }
 
-    history = await get_current_history()
+    history = await build_display_history(session)
 
     return web.Response(
         text=render_dashboard(bookings, homes, history=history, form=form, bookings_error=bookings_error),
@@ -874,7 +977,7 @@ async def dashboard_create_visitor(request):
     except aiohttp.ClientError as e:
         bookings_error = str(e)
 
-    history = await get_current_history()
+    history = await build_display_history(session)
 
     def error_page(message, status=400):
         return web.Response(
@@ -923,7 +1026,7 @@ async def dashboard_create_visitor(request):
         home["name"], first, last, pin, start_ts, end_ts,
         succeeded + [f"{u} (unbestätigt)" for u in unconfirmed], "Manuell", form["booking_id"] or None,
     )
-    history = await get_current_history()
+    history = await build_display_history(session)
 
     systeme = ", ".join(succeeded) or "-"
     success = (
