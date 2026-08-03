@@ -32,8 +32,11 @@ Es ist **komplett sicher**, denn:
 *   Lokale Access‑Policy‑Suche unter `/policies`
 *   Lokale Nuki-Smart-Lock-Suche unter `/nuki-locks`
 *   **Web‑Dashboard** in der Home‑Assistant‑Seitenleiste (über Ingress, mit HA‑Login
-    abgesichert): Übersicht aktueller/kommender Smoobu‑Buchungen sowie manuelle
-    Besucher‑Anlage (auch unabhängig von Smoobu, z.&nbsp;B. für Handwerker oder Reinigung)
+    abgesichert): Übersicht aktueller/kommender Smoobu‑Buchungen, Übersicht bereits
+    angelegter Besucher inkl. PIN sowie manuelle Besucher‑Anlage (auch unabhängig von
+    Smoobu, z.&nbsp;B. für Handwerker oder Reinigung)
+*   Konfigurierbare Standard‑Check‑in‑/Check‑out‑Zeiten (`default_checkin_time`,
+    `default_checkout_time`), pro Besuch zusätzlich individuell anpassbar
 *   Korrekte Filterung des Smoobu‑Webhooks nach Event‑Typ (nur neue/geänderte Buchungen lösen eine PIN aus)
 *   Unterstützung für Umlaute & Namens‑Trennung
 *   Nicht‑blockierende Verarbeitung (asynchrones HTTP für UniFi & Smoobu)
@@ -101,6 +104,8 @@ options:
   webhook_secret: ""
   nuki_api_token: ""
   admin_email: ""
+  default_checkin_time: "15:00"
+  default_checkout_time: "11:00"
 
   homes_count: 1
 
@@ -124,6 +129,13 @@ options:
   home4_door_group_id: ""
   home4_nuki_smartlock_id: ""
 ```
+
+**Wichtig seit Version 3.9:** `default_checkin_time` (Standard `15:00`) und
+`default_checkout_time` (Standard `11:00`) legen die Standard‑Uhrzeiten für Ein‑/Auszug
+fest — bisher galt fix 00:00–23:59 Uhr. Liefert Smoobu für eine Buchung keine konkrete
+Uhrzeit (das ist bei Smoobu häufig der Fall), greifen diese Standardwerte. Sowohl beim
+automatischen Anlegen per Webhook als auch im Dashboard lässt sich die Uhrzeit pro Besuch
+zusätzlich individuell ändern.
 
 **Wichtig seit Version 3.8:** `admin_email` ist optional und wird bei UniFi‑Access‑Visitoren
 (automatisch per Webhook wie auch manuell im Dashboard angelegt) im `email`‑Feld hinterlegt,
@@ -198,17 +210,25 @@ Passwort ist nicht nötig und wird auch nicht mehr abgefragt.
 
 Das Dashboard zeigt:
 
+*   Eine Tabelle **„Aktuelle & kommende Besucher“** mit allen bereits angelegten
+    Besuchern inkl. Gast, Wohnung, **PIN**, Zeitraum, verwendetem/n System(en)
+    (UniFi/Nuki) und Quelle (Smoobu‑Webhook oder manuell angelegt). Da UniFi Access den
+    Klartext‑PIN nach der Anlage nicht mehr zurückgibt, merkt sich das Add-on diese
+    Zuordnung selbst lokal. Vergangene Aufenthalte werden automatisch ausgeblendet, es
+    werden nur aktuelle und kommende Besuche angezeigt.
 *   Eine Tabelle aller aktuellen und kommenden Smoobu‑Buchungen (Gast, Wohnung, An‑/Abreise)
 *   Einen Link „Besucher anlegen“ pro Buchung, der das Formular darunter mit Name, Wohnung
-    und Zeitraum vorausfüllt
+    und Zeitraum (inkl. Uhrzeit, sofern von Smoobu geliefert, sonst Standardzeiten) vorausfüllt
 *   Ein Formular zur **manuellen** Besucher‑Anlage — auch komplett unabhängig von einer
-    Smoobu‑Buchung (z.&nbsp;B. für Handwerker oder Reinigungspersonal)
+    Smoobu‑Buchung (z.&nbsp;B. für Handwerker oder Reinigungspersonal) — mit frei wählbarem
+    Datum **und** Uhrzeit für An‑ und Abreise
 
 Beim Absenden wird wie beim automatischen Ablauf ein zufälliger PIN erzeugt und je nach
 Konfiguration der gewählten Wohnung ein befristeter Visitor in UniFi Access und/oder ein
 Keypad-Code auf dem zugehörigen Nuki Smart Lock angelegt; der PIN wird direkt im Dashboard
-angezeigt (bei manueller Anlage gibt es **keine** Rückschreibung an Smoobu, da kein Bezug
-zu einer konkreten Buchung besteht).
+angezeigt und erscheint anschließend auch in der Besucherübersicht (bei manueller Anlage
+gibt es **keine** Rückschreibung an Smoobu, da kein Bezug zu einer konkreten Buchung
+besteht).
 
 **Sicherheitshinweis:** Der interne Dashboard‑Port (8100) wird bewusst **nicht** direkt im
 Netzwerk exponiert — er ist ausschließlich über den Ingress‑Proxy von Home Assistant

@@ -6,6 +6,7 @@ import hmac
 import html
 import json
 import logging
+import os
 import secrets
 import sys
 import time
@@ -40,6 +41,26 @@ WEBHOOK_SECRET = opts["webhook_secret"]
 NUKI_API_TOKEN = opts.get("nuki_api_token", "").strip()
 ADMIN_EMAIL = opts.get("admin_email", "").strip()
 HOMES_COUNT = opts["homes_count"]
+
+HISTORY_PATH = Path("/data/visitor_history.json")
+HISTORY_LOCK = asyncio.Lock()
+
+
+def _normalize_time(value, fallback):
+    """Validiert ein HH:MM-Zeitfeld aus der Konfiguration, faellt bei ungueltigem
+    Wert auf den fallback zurueck (und loggt eine Warnung), statt spaeter beim
+    Anlegen eines Besuchers abzustuerzen."""
+    value = (value or "").strip()
+    try:
+        return datetime.datetime.strptime(value, "%H:%M").strftime("%H:%M")
+    except ValueError:
+        if value:
+            log.warning("Ungültige Zeitangabe '%s' in der Konfiguration - verwende %s", value, fallback)
+        return fallback
+
+
+DEFAULT_CHECKIN_TIME = _normalize_time(opts.get("default_checkin_time"), "15:00")
+DEFAULT_CHECKOUT_TIME = _normalize_time(opts.get("default_checkout_time"), "11:00")
 
 # Multi-Standort Konfiguration. Eine Wohnung kann UniFi Access (Door Group + Policy),
 # Nuki (Smart Lock mit Keypad) oder beides gleichzeitig nutzen (z.B. zwei Tueren mit
@@ -96,6 +117,28 @@ RELEVANT_ACTIONS = ("newReservation", "updateReservation")
 def to_unix(date_str):
     dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
     return int(time.mktime(dt.timetuple()))
+
+
+def to_unix_datetime(date_str, time_str):
+    dt = datetime.datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    return int(time.mktime(dt.timetuple()))
+
+
+def format_ts(ts):
+    return datetime.datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
+
+
+def parse_smoobu_time(value, default):
+    """Smoobu liefert check-in/check-out als Uhrzeit, aber oft NULL (nur gefuellt,
+    wenn der Gast das Online-Check-in-Formular ausgefuellt hat) - dann wird die
+    konfigurierte Standardzeit verwendet."""
+    value = str(value).strip() if value else ""
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.datetime.strptime(value, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    return default
 
 
 def split_name(name):
@@ -273,6 +316,64 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
         raise NoProviderConfigured(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
 
     return pin, succeeded, unconfirmed, failed
+
+
+def _load_history():
+    if not HISTORY_PATH.exists():
+        return []
+    try:
+        with HISTORY_PATH.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("Besucher-Historie konnte nicht geladen werden: %s", e)
+        return []
+
+
+def _save_history(entries):
+    try:
+        tmp_path = HISTORY_PATH.with_suffix(".tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(entries, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, HISTORY_PATH)
+    except OSError as e:
+        log.warning("Besucher-Historie konnte nicht gespeichert werden: %s", e)
+
+
+async def record_visit(home_name, first, last, pin, start_ts, end_ts, systems, source, booking_id=None):
+    """Speichert einen angelegten Besucher lokal (persistent unter /data), damit das
+    Dashboard eine Uebersicht zeigen kann - UniFi gibt den PIN nach dem Anlegen nicht
+    mehr im Klartext zurueck, daher ist das die einzige Quelle dafuer. Es werden nur
+    aktuelle/kommende Eintraege behalten (Abreise in der Zukunft); abgelaufene werden
+    bei jedem Aufruf automatisch entfernt."""
+    async with HISTORY_LOCK:
+        entries = _load_history()
+        now = time.time()
+        entries = [e for e in entries if e.get("end_ts", 0) >= now]
+        entries.append({
+            "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "home": home_name,
+            "first_name": first,
+            "last_name": last,
+            "pin": pin,
+            "start_ts": start_ts,
+            "end_ts": end_ts,
+            "systems": systems,
+            "source": source,
+            "booking_id": booking_id,
+        })
+        entries.sort(key=lambda e: e["start_ts"])
+        _save_history(entries)
+
+
+async def get_current_history():
+    async with HISTORY_LOCK:
+        entries = _load_history()
+        now = time.time()
+        current = [e for e in entries if e.get("end_ts", 0) >= now]
+        if len(current) != len(entries):
+            _save_history(current)
+        current.sort(key=lambda e: e["start_ts"])
+        return current
 
 
 def _smoobu_signature(method, path, query, timestamp, nonce, body_hash):
@@ -503,9 +604,12 @@ async def handle(request):
     guest = normalize(raw_guest)
     first, last = split_name(guest)
 
+    checkin_time = parse_smoobu_time(data.get("check-in"), DEFAULT_CHECKIN_TIME)
+    checkout_time = parse_smoobu_time(data.get("check-out"), DEFAULT_CHECKOUT_TIME)
+
     try:
-        start_ts = to_unix(arrival)
-        end_ts = to_unix(departure) + 86399
+        start_ts = to_unix_datetime(arrival, checkin_time)
+        end_ts = to_unix_datetime(departure, checkout_time)
     except ValueError as e:
         log.warning("Ungültiges Datumsformat: %s", e)
         return web.Response(text=f"ERROR: Invalid date format: {e}", status=400)
@@ -537,6 +641,11 @@ async def handle(request):
         f" (unbestätigt: {', '.join(unconfirmed)})" if unconfirmed else "",
     )
 
+    await record_visit(
+        property_name, first, last, pin, start_ts, end_ts,
+        succeeded + [f"{u} (unbestätigt)" for u in unconfirmed], "Webhook", booking_id,
+    )
+
     await push_pin_to_smoobu(session, booking_id, pin)
 
     systeme = ", ".join(succeeded + [f"{u} (unbestätigt)" for u in unconfirmed])
@@ -553,8 +662,10 @@ DASHBOARD_STYLE = """
     th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
     th { background: #f2f2f2; }
     form { margin-top: 0.5rem; display: grid; gap: 0.6rem; max-width: 420px; }
+    .field-row { display: flex; gap: 0.6rem; }
+    .field-row > div { flex: 1; }
     label { font-weight: bold; font-size: 0.9rem; }
-    input, select { padding: 0.4rem; font-size: 1rem; }
+    input, select { padding: 0.4rem; font-size: 1rem; width: 100%; box-sizing: border-box; }
     button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
     .msg-error { background: #fdecea; border: 1px solid #f5c6cb; padding: 0.6rem 1rem; border-radius: 4px; }
     .msg-success { background: #e6f4ea; border: 1px solid #b7dfc0; padding: 0.6rem 1rem; border-radius: 4px; }
@@ -562,8 +673,9 @@ DASHBOARD_STYLE = """
 """
 
 
-def render_dashboard(bookings, homes_list, form=None, error=None, success=None, bookings_error=None):
+def render_dashboard(bookings, homes_list, history=None, form=None, error=None, success=None, bookings_error=None):
     form = form or {}
+    history = history or []
 
     def esc(v):
         return html.escape(str(v)) if v is not None else ""
@@ -582,6 +694,21 @@ def render_dashboard(bookings, homes_list, form=None, error=None, success=None, 
             </tr>
         """)
     bookings_html = "".join(rows) if rows else '<tr><td colspan="5">Keine aktuellen Buchungen gefunden.</td></tr>'
+
+    history_rows = []
+    for h in history:
+        name = f"{h.get('first_name', '')} {h.get('last_name', '')}".strip()
+        history_rows.append(f"""
+            <tr>
+                <td>{esc(name)}</td>
+                <td>{esc(h.get('home'))}</td>
+                <td class="pin">{esc(h.get('pin'))}</td>
+                <td>{esc(format_ts(h['start_ts']))} – {esc(format_ts(h['end_ts']))}</td>
+                <td>{esc(', '.join(h.get('systems', [])))}</td>
+                <td>{esc(h.get('source'))}</td>
+            </tr>
+        """)
+    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="6">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
 
     home_options = ['<option value="">-- Wohnung wählen --</option>']
     for h in homes_list:
@@ -608,6 +735,12 @@ def render_dashboard(bookings, homes_list, form=None, error=None, success=None, 
 
 {banner}
 
+<h2>Aktuelle & kommende Besucher</h2>
+<table>
+    <tr><th>Gast</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr>
+    {history_html}
+</table>
+
 <h2>Aktuelle & kommende Buchungen</h2>
 <table>
     <tr><th>Gast</th><th>Wohnung</th><th>Anreise</th><th>Abreise</th><th></th></tr>
@@ -626,13 +759,25 @@ def render_dashboard(bookings, homes_list, form=None, error=None, success=None, 
         <label for="guest_name">Name des Besuchers</label><br>
         <input type="text" name="guest_name" id="guest_name" value="{esc(form.get('guest_name'))}" required>
     </div>
-    <div>
-        <label for="arrival">Anreise</label><br>
-        <input type="date" name="arrival" id="arrival" value="{esc(form.get('arrival'))}" required>
+    <div class="field-row">
+        <div>
+            <label for="arrival">Anreise</label><br>
+            <input type="date" name="arrival" id="arrival" value="{esc(form.get('arrival'))}" required>
+        </div>
+        <div>
+            <label for="checkin_time">Uhrzeit</label><br>
+            <input type="time" name="checkin_time" id="checkin_time" value="{esc(form.get('checkin_time', DEFAULT_CHECKIN_TIME))}" required>
+        </div>
     </div>
-    <div>
-        <label for="departure">Abreise</label><br>
-        <input type="date" name="departure" id="departure" value="{esc(form.get('departure'))}" required>
+    <div class="field-row">
+        <div>
+            <label for="departure">Abreise</label><br>
+            <input type="date" name="departure" id="departure" value="{esc(form.get('departure'))}" required>
+        </div>
+        <div>
+            <label for="checkout_time">Uhrzeit</label><br>
+            <input type="time" name="checkout_time" id="checkout_time" value="{esc(form.get('checkout_time', DEFAULT_CHECKOUT_TIME))}" required>
+        </div>
     </div>
     <input type="hidden" name="booking_id" value="{esc(form.get('booking_id'))}">
     <button type="submit">Besucher anlegen &amp; PIN erzeugen</button>
@@ -664,11 +809,15 @@ async def dashboard_page(request):
                 "guest_name": match.get("guest-name", ""),
                 "arrival": match.get("arrival", ""),
                 "departure": match.get("departure", ""),
+                "checkin_time": parse_smoobu_time(match.get("check-in"), DEFAULT_CHECKIN_TIME),
+                "checkout_time": parse_smoobu_time(match.get("check-out"), DEFAULT_CHECKOUT_TIME),
                 "booking_id": booking_id,
             }
 
+    history = await get_current_history()
+
     return web.Response(
-        text=render_dashboard(bookings, homes, form=form, bookings_error=bookings_error),
+        text=render_dashboard(bookings, homes, history=history, form=form, bookings_error=bookings_error),
         content_type="text/html",
     )
 
@@ -682,6 +831,8 @@ async def dashboard_create_visitor(request):
         "guest_name": (data.get("guest_name") or "").strip(),
         "arrival": (data.get("arrival") or "").strip(),
         "departure": (data.get("departure") or "").strip(),
+        "checkin_time": (data.get("checkin_time") or "").strip() or DEFAULT_CHECKIN_TIME,
+        "checkout_time": (data.get("checkout_time") or "").strip() or DEFAULT_CHECKOUT_TIME,
         "booking_id": (data.get("booking_id") or "").strip(),
     }
 
@@ -691,9 +842,11 @@ async def dashboard_create_visitor(request):
     except aiohttp.ClientError as e:
         bookings_error = str(e)
 
+    history = await get_current_history()
+
     def error_page(message, status=400):
         return web.Response(
-            text=render_dashboard(bookings, homes, form=form, error=message, bookings_error=bookings_error),
+            text=render_dashboard(bookings, homes, history=history, form=form, error=message, bookings_error=bookings_error),
             content_type="text/html",
             status=status,
         )
@@ -706,10 +859,10 @@ async def dashboard_create_visitor(request):
         return error_page("Name, Anreise und Abreise sind Pflichtfelder.")
 
     try:
-        start_ts = to_unix(form["arrival"])
-        end_ts = to_unix(form["departure"]) + 86399
+        start_ts = to_unix_datetime(form["arrival"], form["checkin_time"])
+        end_ts = to_unix_datetime(form["departure"], form["checkout_time"])
     except ValueError as e:
-        return error_page(f"Ungültiges Datumsformat: {e}")
+        return error_page(f"Ungültiges Datums-/Zeitformat: {e}")
 
     guest = normalize(form["guest_name"])
     first, last = split_name(guest)
@@ -734,6 +887,12 @@ async def dashboard_create_visitor(request):
         f" (unbestätigt: {', '.join(unconfirmed)})" if unconfirmed else "",
     )
 
+    await record_visit(
+        home["name"], first, last, pin, start_ts, end_ts,
+        succeeded + [f"{u} (unbestätigt)" for u in unconfirmed], "Manuell", form["booking_id"] or None,
+    )
+    history = await get_current_history()
+
     systeme = ", ".join(succeeded) or "-"
     success = (
         f"Besucher <strong>{html.escape(first)} {html.escape(last)}</strong> angelegt "
@@ -749,7 +908,7 @@ async def dashboard_create_visitor(request):
         success += f'</p><p class="msg-error">Achtung, fehlgeschlagen: {html.escape("; ".join(failed))}'
 
     return web.Response(
-        text=render_dashboard(bookings, homes, success=success, bookings_error=bookings_error),
+        text=render_dashboard(bookings, homes, history=history, success=success, bookings_error=bookings_error),
         content_type="text/html",
     )
 
