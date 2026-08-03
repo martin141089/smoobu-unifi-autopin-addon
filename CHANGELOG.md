@@ -6,6 +6,16 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.10.1]
+
+### Geändert
+- **Dashboard übersichtlicher gestaltet:**
+  - Neue Status-Spalte in der Besucherübersicht: farbiger Badge „Gerade vor Ort“
+    (grün, Zeitraum läuft aktuell) bzw. „Kommend“ (blau) auf einen Blick.
+  - Buchungen, für die bereits ein Besucher/PIN angelegt wurde, zeigen in der
+    Buchungstabelle jetzt „✓ bereits angelegt“ statt eines erneut klickbaren Links
+    „Besucher anlegen“ - weniger Redundanz zwischen Besucher- und Buchungstabelle.
+
 ## [3.10.0]
 
 ### Hinzugefügt
