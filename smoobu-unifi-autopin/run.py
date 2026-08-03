@@ -1044,6 +1044,14 @@ async def dashboard_create_visitor(request):
         home["name"], first, last, pin, start_ts, end_ts,
         succeeded + [f"{u} (unbestätigt)" for u in unconfirmed], "Manuell", form["booking_id"] or None,
     )
+
+    if form["booking_id"]:
+        try:
+            smoobu_booking_id = int(form["booking_id"])
+        except ValueError:
+            smoobu_booking_id = form["booking_id"]
+        await push_pin_to_smoobu(session, smoobu_booking_id, pin)
+
     history = await build_display_history(session)
 
     systeme = ", ".join(succeeded) or "-"
@@ -1051,6 +1059,8 @@ async def dashboard_create_visitor(request):
         f"Besucher <strong>{html.escape(first)} {html.escape(last)}</strong> angelegt "
         f"({html.escape(systeme)}). PIN: <span class=\"pin\">{pin}</span>"
     )
+    if form["booking_id"]:
+        success += " – PIN wurde außerdem an die verknüpfte Smoobu-Buchung übertragen."
     if unconfirmed:
         success += (
             f'</p><p class="msg-error">Hinweis: {html.escape(", ".join(unconfirmed))} wurde angenommen, '
