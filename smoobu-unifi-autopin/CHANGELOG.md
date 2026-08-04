@@ -2,6 +2,19 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.11.0]
+
+### Geändert
+- **Nuki-Bestätigung mit Retry statt einmaligem Check:** Bisher wurde direkt nach dem
+  Anlegen eines Nuki-Codes einmalig geprüft, ob er in Nukis Autorisierungsliste
+  erscheint - bei einer kurzen Sync-Verzögerung führte das öfter zu einem
+  unnötigen „unbestätigt", obwohl der Code kurz danach doch ankam. Es wird jetzt bis
+  zu dreimal geprüft (sofort, nach 3s, nach weiteren 5s - max. 8 Sekunden
+  Gesamtwartezeit), bevor endgültig „unbestätigt" gemeldet wird. Eine echte
+  Push-Bestätigung böte nur Nukis „Advanced API" (separater Freigabeprozess +
+  OAuth2 + eigener Webhook-Empfänger) - für den hier genutzten einfachen
+  API-Token nicht verfügbar, daher dieser pragmatische Kompromiss per Retry.
+
 ## [3.10.3]
 
 ### Behoben

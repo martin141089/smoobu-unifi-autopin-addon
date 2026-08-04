@@ -228,9 +228,36 @@ async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, rem
         r.raise_for_status()
 
 
+# Wartezeiten (Sekunden) vor jedem Bestaetigungs-Versuch - erster Versuch sofort,
+# danach zunehmender Abstand, um Nukis asynchroner Sync eine faire Chance zu geben,
+# bevor "unbestaetigt" gemeldet wird.
+NUKI_CONFIRM_RETRY_DELAYS = (0, 3, 5)
+
+
+async def _check_nuki_auth(session, lock_id, pin):
+    """Einzelner Bestaetigungs-Check: True wenn der Code in Nukis Autorisierungsliste
+    erscheint (ohne Fehler), sonst False."""
+    try:
+        async with session.get(f"{NUKI_API_HOST}/smartlock/{lock_id}/auth", headers=NUKI_HEADERS) as r:
+            r.raise_for_status()
+            auths = await r.json()
+    except aiohttp.ClientError as e:
+        log.warning("Nuki-Bestaetigung konnte nicht abgerufen werden (Smartlock %s): %s", lock_id, e)
+        return False
+
+    match = next((a for a in auths if a.get("code") == int(pin)), None)
+    if match is None:
+        return False
+    if match.get("error"):
+        log.warning("Nuki meldet Fehler für Code auf Smartlock %s: %s", lock_id, match.get("error"))
+        return False
+    return True
+
+
 async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     """Legt einen befristeten Keypad-Code auf einem Nuki Smart Lock an und prueft
-    anschliessend, ob er tatsaechlich in Nukis Autorisierungsliste ankommt.
+    anschliessend mit mehreren Versuchen, ob er tatsaechlich in Nukis
+    Autorisierungsliste ankommt.
 
     Erfordert ein physisches Nuki Keypad am Smart Lock - ohne Keypad kann kein Code
     eingegeben werden. type 13 = Keypad-Code. "smartlockIds" ist ein Array (nicht
@@ -241,10 +268,15 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     Nukis Web API ist laut Nuki-Entwicklerteam asynchron: ein 2xx auf den PUT-Request
     bestaetigt nur die Annahme, nicht dass der Code tatsaechlich am Schloss ankommt
     (https://developer.nuki.io/t/oauth2-api-integration-seems-accepted-but-no-keypad-
-    codes-created-redirect-uri-cant-be-saved-500-error/35811). Deshalb wird nach dem
-    Anlegen per GET geprueft, ob der Code in der Autorisierungsliste des Smart Locks
-    erscheint. Gibt True zurueck, wenn bestaetigt, sonst False (kein Fehler - dann ist
-    unklar, ob es nur eine Sync-Verzoegerung ist oder der Code wirklich fehlt).
+    codes-created-redirect-uri-cant-be-saved-500-error/35811). Ein offizieller
+    Push-Status dazu existiert nur ueber Nukis "Advanced API" (separater
+    Freigabeprozess + OAuth2 + eigener Webhook-Empfaenger) und ist fuer den simplen
+    statischen API-Token, den dieses Add-on nutzt, nicht verfuegbar. Deshalb wird
+    stattdessen per GET wiederholt geprueft (Zeitplan: NUKI_CONFIRM_RETRY_DELAYS),
+    ob der Code in der Autorisierungsliste des Smart Locks erscheint. Gibt True
+    zurueck, sobald bestaetigt, sonst False nach dem letzten Versuch (kein Fehler -
+    dann ist unklar, ob es eine laengere Sync-Verzoegerung ist oder der Code wirklich
+    fehlt).
     """
     lock_id = _parse_nuki_smartlock_id(smartlock_id)
     body = {
@@ -262,21 +294,15 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     ) as r:
         r.raise_for_status()
 
-    try:
-        async with session.get(f"{NUKI_API_HOST}/smartlock/{lock_id}/auth", headers=NUKI_HEADERS) as r:
-            r.raise_for_status()
-            auths = await r.json()
-    except aiohttp.ClientError as e:
-        log.warning("Nuki-Bestaetigung konnte nicht abgerufen werden (Smartlock %s): %s", lock_id, e)
-        return False
+    for attempt, delay in enumerate(NUKI_CONFIRM_RETRY_DELAYS, start=1):
+        if delay:
+            await asyncio.sleep(delay)
+        if await _check_nuki_auth(session, lock_id, pin):
+            if attempt > 1:
+                log.info("Nuki-Code auf Smartlock %s erst nach %d. Versuch bestätigt", lock_id, attempt)
+            return True
 
-    match = next((a for a in auths if a.get("code") == int(pin)), None)
-    if match is None:
-        return False
-    if match.get("error"):
-        log.warning("Nuki meldet Fehler für Code auf Smartlock %s: %s", lock_id, match.get("error"))
-        return False
-    return True
+    return False
 
 
 async def create_access_for_home(session, home, first, last, start_ts, end_ts, remarks, visitor_company):
