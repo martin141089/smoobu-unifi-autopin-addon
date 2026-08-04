@@ -2,10 +2,14 @@
 
 **Multi‑Wohnungs PIN‑ & Visitor‑Automation für UniFi Access + Nuki + Smoobu**
 
-Dieses Home‑Assistant‑Add-on erlaubt die vollautomatische PIN‑ und Visitor‑Erstellung  
-für UniFi Access und/oder Nuki Smart Locks basierend auf Smoobu‑Buchungen —  
-Multi‑Standort‑fähig, pro Wohnung/Tür frei kombinierbar und generisch für beliebige  
-Umgebungen (UDM‑SE, UniFi Access Controller, Nuki Keypad etc.).
+Sobald eine Buchung in Smoobu eingeht, entsteht automatisch ein befristeter Türcode —
+an der richtigen Wohnung, für den richtigen Zeitraum, auf beiden Zutrittssystemen
+gleichzeitig. Dieses Home‑Assistant‑Add-on übernimmt die vollautomatische PIN‑ und
+Visitor‑Erstellung für UniFi Access und/oder Nuki Smart Locks basierend auf
+Smoobu‑Buchungen — Multi‑Standort‑fähig, pro Wohnung/Tür frei kombinierbar und
+generisch für beliebige Umgebungen (UDM‑SE, UniFi Access Controller, Nuki Keypad etc.).
+
+**2** Zutrittssysteme · **4** Wohnungen max. · **PIN‑Ziffern 1–9** · **Version 3.11.0**
 
 Es ist **komplett sicher**, denn:
 
@@ -15,6 +19,27 @@ Es ist **komplett sicher**, denn:
 ✅ Auto‑Scan der Türgruppen erfolgt lokal und manuell  
 ✅ Smoobu‑Anbindung über HMAC‑signierte Requests (keine geheimen Keys im Klartext‑Header)  
 ✅ Dashboard nur für eingeloggte Home‑Assistant‑Benutzer über Ingress erreichbar
+
+***
+
+# ✅ So funktioniert's
+
+Eine neue oder geänderte Buchung löst per Webhook die Kette aus. Derselbe Weg lässt
+sich auch manuell im Dashboard anstoßen — etwa für Handwerker oder Reinigung,
+unabhängig von einer Buchung.
+
+```mermaid
+flowchart LR
+    A["Smoobu-Buchung<br/>neue / geänderte Reservierung"] -->|"Webhook, HMAC-signiert"| C
+    B["Gastgeber<br/>Dashboard in der HA-Seitenleiste"] -->|"manuelle Anlage"| C
+    C["AutoPIN Add-on<br/>PIN-Generator · Zeitfenster · Historie"]
+    C -->|"PIN + Zeitraum"| D["UniFi Access<br/>befristeter Visitor"]
+    C -->|"PIN + Zeitraum"| E["Nuki Smart Lock<br/>Keypad-Code, verifiziert"]
+    C -.->|"PIN zurückschreiben (doorPin)"| A
+```
+
+Beide Zutrittssysteme erhalten **denselben PIN**, damit sich Gäste nur einen Code
+merken müssen — auch wenn eine Wohnung zwei Türen mit unterschiedlichen Systemen hat.
 
 ***
 
@@ -286,6 +311,25 @@ Nach Abschluss aller Konfigurationen:
     ├── DOCS.md          (Dokumentation, wird in Home Assistant angezeigt)
     ├── CHANGELOG.md     (Changelog, wird in Home Assistant angezeigt)
     └── Dockerfile
+
+***
+
+# ✅ Entstehung
+
+Neun Ausbaustufen, von der ersten Code-Durchsicht bis zur robusten
+Zwei-Systeme-Automation:
+
+| Version | Meilenstein | Beschreibung |
+|---|---|---|
+| v1.x | Grundgerüst | Vom blockierenden Prototyp zum durchgängig asynchronen Add-on, mit strukturiertem Logging und sicherer PIN-/Secret-Erzeugung |
+| v3.0 | HMAC-Migration | Rechtzeitig auf Smoobus signierte Authentifizierung umgestellt, bevor der alte Klartext-Key abgeschaltet wird |
+| v3.5 | Web-Dashboard | Buchungsübersicht und manuelle Besucher-Anlage direkt in der Home-Assistant-Seitenleiste |
+| v3.6 | Ingress-Login | Basic-Auth abgelöst durch native Home-Assistant-Authentifizierung |
+| v3.7 | Nuki-Unterstützung | Zweites Zutrittssystem, pro Wohnung oder sogar pro Tür frei mit UniFi Access kombinierbar |
+| v3.8 | Verifizierte Zustellung | Prüfung, ob Nuki-Codes tatsächlich ankommen, plus konfigurierbare Admin-Kontaktadresse |
+| v3.9 | Besucher-Historie | Lokale, persistente PIN-Zuordnung sowie frei einstellbare Check-in-/-out-Zeiten |
+| v3.10 | Fein-Schliff | Abgleich mit extern angelegten UniFi-Visitoren, mobile Kartenansicht, Status-Badges |
+| v3.11 | Nuki-Retry | Mehrfache Bestätigungsprüfung statt einmaligem Check — robuster gegen Sync-Verzögerungen |
 
 ***
 
