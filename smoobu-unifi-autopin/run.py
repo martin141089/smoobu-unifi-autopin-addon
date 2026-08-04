@@ -305,7 +305,8 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
 
     if home["nuki_smartlock_id"]:
         try:
-            confirmed = await create_nuki_code(session, home["nuki_smartlock_id"], pin, remarks, start_ts, end_ts)
+            nuki_name = f"{first} {last}".strip() or remarks
+            confirmed = await create_nuki_code(session, home["nuki_smartlock_id"], pin, nuki_name, start_ts, end_ts)
             if confirmed:
                 succeeded.append("Nuki")
             else:

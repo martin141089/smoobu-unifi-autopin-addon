@@ -6,6 +6,16 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.10.3]
+
+### Behoben
+- **Nuki-Keypad-Code zeigte den falschen Namen an** ("Manuell im Dashboard" bzw.
+  "Smoobu Booking 123" statt des Gastnamens). Ursache: Beim Anlegen wurde
+  versehentlich der interne `remarks`-Text (gedacht für UniFis Visitor-Notizfeld) auch
+  als Nuki-Codename verwendet - durch Nukis ~20-Zeichen-Limit für den Namen wurde
+  daraus z.&nbsp;B. „Manuell im Dashboard". Jetzt wird für Nuki der tatsächliche
+  Gastname (Vor- + Nachname) übergeben.
+
 ## [3.10.2]
 
 ### Behoben
