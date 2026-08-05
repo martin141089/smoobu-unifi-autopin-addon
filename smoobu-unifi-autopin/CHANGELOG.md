@@ -2,6 +2,19 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.11.1]
+
+### Behoben
+- **„405: Method Not Allowed“ beim zweiten Besucher-Anlegen im Dashboard, ohne Neuladen
+  der Seite.** Nach dem Anlegen eines Besuchers zeigte die Adressleiste `.../visitor`
+  statt der Startseite. Der Link „Besucher anlegen“ war als rein query-basierter,
+  pfad-loser Verweis (`?booking_id=...`) gebaut - so ein Verweis übernimmt laut
+  URL-Standard den kompletten Pfad der aktuellen Seite unverändert, statt zur
+  Startseite zurückzuführen. Ein Klick landete dadurch per GET auf `/visitor`, das
+  aber nur POST-Anfragen entgegennimmt. Behoben, indem der Link jetzt explizit auf das
+  Wurzelverzeichnis verweist (`./?booking_id=...`) und damit unabhängig vom aktuellen
+  Pfad korrekt zur Startseite führt.
+
 ## [3.11.0]
 
 ### Geändert
