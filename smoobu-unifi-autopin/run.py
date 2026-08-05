@@ -849,7 +849,7 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
         if booking_id is not None and str(booking_id) in known_booking_ids:
             action_cell = '<span class="badge badge-done">✓ bereits angelegt</span>'
         else:
-            action_cell = f'<a href="?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a>'
+            action_cell = f'<a href="./?booking_id={esc(booking_id)}#anlegen">Besucher anlegen</a>'
         rows.append(f"""
             <tr>
                 <td data-label="Gast">{esc(b.get('guest-name'))}</td>
