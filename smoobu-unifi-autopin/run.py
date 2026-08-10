@@ -128,6 +128,13 @@ def format_ts(ts):
     return datetime.datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
 
 
+def ts_to_date_time(ts):
+    """Kehrt to_unix_datetime() um - liefert (Datum, Uhrzeit) als getrennte Strings
+    fuer die Vorbefuellung von <input type="date"> / <input type="time">."""
+    dt = datetime.datetime.fromtimestamp(ts)
+    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+
+
 def parse_smoobu_time(value, default):
     """Smoobu liefert check-in/check-out als Uhrzeit, aber oft NULL (nur gefuellt,
     wenn der Gast das Online-Check-in-Formular ausgefuellt hat) - dann wird die
@@ -193,7 +200,10 @@ class NoProviderConfigured(Exception):
 
 
 async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin):
-    """Legt einen befristeten Visitor in UniFi Access an.
+    """Legt einen befristeten Visitor in UniFi Access an und gibt dessen Visitor-ID
+    zurueck (aus "data.id" der Antwort) - wird lokal gespeichert, um den Visitor
+    spaeter (z.B. bei einer Zeitraum-Aenderung) per PUT /visitors/:id aktualisieren
+    zu koennen, statt ihn neu anlegen zu muessen.
 
     Das optionale "email"-Feld der UniFi-Access-API ist offiziell fuer die E-Mail des
     Besuchers gedacht; wir nutzen es hier bewusst als Admin-Kontaktadresse (admin_email),
@@ -226,6 +236,42 @@ async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, rem
         ssl=False,
     ) as r:
         r.raise_for_status()
+        payload = await r.json()
+    return (payload.get("data") or {}).get("id")
+
+
+async def update_unifi_visitor(session, home, visitor_id, first, last, start_ts, end_ts, remarks, visitor_company):
+    """Aktualisiert Zeitraum (und Stammdaten) eines bestehenden UniFi-Access-Visitors
+    per PUT /visitors/:id, ohne ihn neu anzulegen. Der PIN wird bewusst NICHT
+    mitgeschickt: Der Update-Endpunkt kennt laut UniFi-Doku kein "pin_code"-Feld
+    (dafuer gibt es die separaten Assign/Unassign-PIN-Endpunkte) - der bestehende PIN
+    bleibt dadurch unangetastet erhalten.
+    """
+    visitor_payload = {
+        "first_name": first,
+        "last_name": last,
+        "remarks": remarks,
+        "visitor_company": visitor_company,
+        "start_time": start_ts,
+        "end_time": end_ts,
+        "visit_reason": "Business",
+        "resources": [
+            {
+                "id": home["door_group"],
+                "type": "door_group",
+            }
+        ],
+        "access_policy_ids": [home["policy"]],
+    }
+    if ADMIN_EMAIL:
+        visitor_payload["email"] = ADMIN_EMAIL
+    async with session.put(
+        f"{UNIFI_BASE}/visitors/{visitor_id}",
+        headers=UNIFI_HEADERS,
+        json=visitor_payload,
+        ssl=False,
+    ) as r:
+        r.raise_for_status()
 
 
 # Wartezeiten (Sekunden) vor jedem Bestaetigungs-Versuch - erster Versuch sofort,
@@ -234,24 +280,25 @@ async def create_unifi_visitor(session, home, first, last, start_ts, end_ts, rem
 NUKI_CONFIRM_RETRY_DELAYS = (0, 3, 5)
 
 
-async def _check_nuki_auth(session, lock_id, pin):
-    """Einzelner Bestaetigungs-Check: True wenn der Code in Nukis Autorisierungsliste
-    erscheint (ohne Fehler), sonst False."""
+async def _find_nuki_auth(session, lock_id, pin):
+    """Sucht die Autorisierung mit dem angegebenen Code in Nukis Autorisierungsliste.
+    Gibt das Auth-Objekt (inkl. "id") zurueck, wenn gefunden und ohne Fehler, sonst
+    None."""
     try:
         async with session.get(f"{NUKI_API_HOST}/smartlock/{lock_id}/auth", headers=NUKI_HEADERS) as r:
             r.raise_for_status()
             auths = await r.json()
     except aiohttp.ClientError as e:
         log.warning("Nuki-Bestaetigung konnte nicht abgerufen werden (Smartlock %s): %s", lock_id, e)
-        return False
+        return None
 
     match = next((a for a in auths if a.get("code") == int(pin)), None)
     if match is None:
-        return False
+        return None
     if match.get("error"):
         log.warning("Nuki meldet Fehler für Code auf Smartlock %s: %s", lock_id, match.get("error"))
-        return False
-    return True
+        return None
+    return match
 
 
 async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
@@ -274,9 +321,11 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     statischen API-Token, den dieses Add-on nutzt, nicht verfuegbar. Deshalb wird
     stattdessen per GET wiederholt geprueft (Zeitplan: NUKI_CONFIRM_RETRY_DELAYS),
     ob der Code in der Autorisierungsliste des Smart Locks erscheint. Gibt True
-    zurueck, sobald bestaetigt, sonst False nach dem letzten Versuch (kein Fehler -
-    dann ist unklar, ob es eine laengere Sync-Verzoegerung ist oder der Code wirklich
-    fehlt).
+    zurueck, sobald bestaetigt (zusammen mit der Auth-ID - wird lokal gespeichert, um
+    die Autorisierung spaeter per POST /smartlock/{id}/auth/{authId} aktualisieren zu
+    koennen, statt sie neu anzulegen), sonst (False, None) nach dem letzten Versuch
+    (kein Fehler - dann ist unklar, ob es eine laengere Sync-Verzoegerung ist oder der
+    Code wirklich fehlt).
     """
     lock_id = _parse_nuki_smartlock_id(smartlock_id)
     body = {
@@ -297,9 +346,57 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
     for attempt, delay in enumerate(NUKI_CONFIRM_RETRY_DELAYS, start=1):
         if delay:
             await asyncio.sleep(delay)
-        if await _check_nuki_auth(session, lock_id, pin):
+        match = await _find_nuki_auth(session, lock_id, pin)
+        if match:
             if attempt > 1:
                 log.info("Nuki-Code auf Smartlock %s erst nach %d. Versuch bestätigt", lock_id, attempt)
+            return True, match.get("id")
+
+    return False, None
+
+
+async def update_nuki_code(session, smartlock_id, auth_id, name, start_ts, end_ts):
+    """Aktualisiert Zeitraum (und Namen) einer bestehenden Nuki-Keypad-Autorisierung
+    per POST /smartlock/{smartlockId}/auth/{authId}, ohne einen neuen Code anzulegen -
+    der PIN selbst bleibt dadurch unveraendert. Wie beim Anlegen ist auch dieser
+    Endpunkt laut Nukis eigener API-Beschreibung asynchron, daher dieselbe
+    Retry-Bestaetigung wie bei create_nuki_code().
+
+    Gibt True zurueck, sobald der neue Zeitraum bestaetigt wurde, sonst False.
+    """
+    lock_id = _parse_nuki_smartlock_id(smartlock_id)
+    body = {
+        "name": name[:20],
+        "allowedFromDate": _iso_millis_utc(start_ts),
+        "allowedUntilDate": _iso_millis_utc(end_ts),
+    }
+    async with session.post(
+        f"{NUKI_API_HOST}/smartlock/{lock_id}/auth/{auth_id}",
+        headers=NUKI_HEADERS,
+        json=body,
+    ) as r:
+        r.raise_for_status()
+
+    expected_from = body["allowedFromDate"]
+    expected_until = body["allowedUntilDate"]
+    for attempt, delay in enumerate(NUKI_CONFIRM_RETRY_DELAYS, start=1):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            async with session.get(
+                f"{NUKI_API_HOST}/smartlock/{lock_id}/auth/{auth_id}", headers=NUKI_HEADERS,
+            ) as r:
+                r.raise_for_status()
+                current = await r.json()
+        except aiohttp.ClientError as e:
+            log.warning("Nuki-Update-Bestaetigung konnte nicht abgerufen werden (Auth %s): %s", auth_id, e)
+            continue
+        if current.get("error"):
+            log.warning("Nuki meldet Fehler für Auth %s: %s", auth_id, current.get("error"))
+            return False
+        if current.get("allowedFromDate") == expected_from and current.get("allowedUntilDate") == expected_until:
+            if attempt > 1:
+                log.info("Nuki-Zeitraum-Update für Auth %s erst nach %d. Versuch bestätigt", auth_id, attempt)
             return True
 
     return False
@@ -310,20 +407,28 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
     was fuer sie konfiguriert ist (eine Wohnung kann z.B. eine UniFi-Tuer und eine
     Nuki-Tuer gleichzeitig haben). Beide Systeme bekommen denselben PIN.
 
-    Gibt (pin, erfolgreich, unbestaetigt, fehlgeschlagen) zurueck - jeweils Listen der
-    betroffenen Systemnamen. "unbestaetigt" betrifft nur Nuki (asynchrone API - der
-    Code wurde angenommen, ist aber nicht sicher bestaetigt) und zaehlt NICHT als
-    Fehlschlag, blockiert also z.B. nicht die PIN-Rueckschreibung an Smoobu. Wird
-    nichts konfiguriert gefunden, wird NoProviderConfigured geworfen.
+    Gibt (pin, erfolgreich, unbestaetigt, fehlgeschlagen, unifi_visitor_id,
+    nuki_auth_id) zurueck. "erfolgreich"/"unbestaetigt"/"fehlgeschlagen" sind Listen
+    der betroffenen Systemnamen. "unbestaetigt" betrifft nur Nuki (asynchrone API -
+    der Code wurde angenommen, ist aber nicht sicher bestaetigt) und zaehlt NICHT als
+    Fehlschlag, blockiert also z.B. nicht die PIN-Rueckschreibung an Smoobu. Die
+    beiden IDs werden lokal gespeichert, um Zeitraum-Aenderungen spaeter per Update
+    statt Neuanlage durchfuehren zu koennen (None, wenn das jeweilige System nicht
+    konfiguriert ist oder die ID nicht ermittelt werden konnte). Wird nichts
+    konfiguriert gefunden, wird NoProviderConfigured geworfen.
     """
     pin = generate_pin()
     succeeded = []
     unconfirmed = []
     failed = []
+    unifi_visitor_id = None
+    nuki_auth_id = None
 
     if home["door_group"] and home["policy"]:
         try:
-            await create_unifi_visitor(session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin)
+            unifi_visitor_id = await create_unifi_visitor(
+                session, home, first, last, start_ts, end_ts, remarks, visitor_company, pin,
+            )
             succeeded.append("UniFi Access")
         except aiohttp.ClientError as e:
             log.error("UniFi Visitor-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
@@ -332,7 +437,9 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
     if home["nuki_smartlock_id"]:
         try:
             nuki_name = f"{first} {last}".strip() or remarks
-            confirmed = await create_nuki_code(session, home["nuki_smartlock_id"], pin, nuki_name, start_ts, end_ts)
+            confirmed, nuki_auth_id = await create_nuki_code(
+                session, home["nuki_smartlock_id"], pin, nuki_name, start_ts, end_ts,
+            )
             if confirmed:
                 succeeded.append("Nuki")
             else:
@@ -349,7 +456,55 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
     if not succeeded and not unconfirmed and not failed:
         raise NoProviderConfigured(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
 
-    return pin, succeeded, unconfirmed, failed
+    return pin, succeeded, unconfirmed, failed, unifi_visitor_id, nuki_auth_id
+
+
+async def update_access_for_home(session, home, entry, first, last, start_ts, end_ts, remarks, visitor_company):
+    """Aktualisiert den Zeitraum eines bereits bestehenden Zutritts (UniFi Access
+    und/oder Nuki) anhand der in der lokalen Historie gespeicherten IDs, ohne den PIN
+    zu aendern. Systeme, fuer die keine gespeicherte ID vorliegt (z.B. Alteintraege
+    von vor dieser Funktion), werden uebersprungen und tauchen weder in "erfolgreich"
+    noch in "fehlgeschlagen" auf.
+
+    Gibt (erfolgreich, unbestaetigt, fehlgeschlagen) zurueck, analog zu
+    create_access_for_home().
+    """
+    succeeded = []
+    unconfirmed = []
+    failed = []
+
+    unifi_visitor_id = entry.get("unifi_visitor_id")
+    if unifi_visitor_id and home["door_group"] and home["policy"]:
+        try:
+            await update_unifi_visitor(
+                session, home, unifi_visitor_id, first, last, start_ts, end_ts, remarks, visitor_company,
+            )
+            succeeded.append("UniFi Access")
+        except aiohttp.ClientError as e:
+            log.error("UniFi Visitor-Update fehlgeschlagen (Wohnung %s): %s", home["name"], e)
+            failed.append(f"UniFi Access ({e})")
+
+    nuki_auth_id = entry.get("nuki_auth_id")
+    if nuki_auth_id and home["nuki_smartlock_id"]:
+        try:
+            nuki_name = f"{first} {last}".strip() or remarks
+            confirmed = await update_nuki_code(
+                session, home["nuki_smartlock_id"], nuki_auth_id, nuki_name, start_ts, end_ts,
+            )
+            if confirmed:
+                succeeded.append("Nuki")
+            else:
+                log.warning(
+                    "Nuki-Zeitraum-Update wurde angenommen, aber nicht bestätigt (Wohnung %s) - "
+                    "ggf. Sync-Verzögerung, bitte im Nuki-Account prüfen",
+                    home["name"],
+                )
+                unconfirmed.append("Nuki")
+        except (aiohttp.ClientError, ValueError) as e:
+            log.error("Nuki-Zeitraum-Update fehlgeschlagen (Wohnung %s): %s", home["name"], e)
+            failed.append(f"Nuki ({e})")
+
+    return succeeded, unconfirmed, failed
 
 
 def _load_history():
@@ -373,17 +528,28 @@ def _save_history(entries):
         log.warning("Besucher-Historie konnte nicht gespeichert werden: %s", e)
 
 
-async def record_visit(home_name, first, last, pin, start_ts, end_ts, systems, source, booking_id=None):
+async def record_visit(
+    home_name, first, last, pin, start_ts, end_ts, systems, source, booking_id=None,
+    unifi_visitor_id=None, nuki_auth_id=None,
+):
     """Speichert einen angelegten Besucher lokal (persistent unter /data), damit das
     Dashboard eine Uebersicht zeigen kann - UniFi gibt den PIN nach dem Anlegen nicht
     mehr im Klartext zurueck, daher ist das die einzige Quelle dafuer. Es werden nur
     aktuelle/kommende Eintraege behalten (Abreise in der Zukunft); abgelaufene werden
-    bei jedem Aufruf automatisch entfernt."""
+    bei jedem Aufruf automatisch entfernt.
+
+    unifi_visitor_id/nuki_auth_id werden mitgespeichert, damit der Zeitraum dieses
+    Besuchers spaeter im Dashboard geaendert werden kann (per Update statt Neuanlage).
+    Gibt die neu vergebene entry_id zurueck, ueber die der Eintrag spaeter im
+    Dashboard wiedergefunden werden kann.
+    """
+    entry_id = uuid.uuid4().hex
     async with HISTORY_LOCK:
         entries = _load_history()
         now = time.time()
         entries = [e for e in entries if e.get("end_ts", 0) >= now]
         entries.append({
+            "entry_id": entry_id,
             "created_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "home": home_name,
             "first_name": first,
@@ -394,7 +560,29 @@ async def record_visit(home_name, first, last, pin, start_ts, end_ts, systems, s
             "systems": systems,
             "source": source,
             "booking_id": booking_id,
+            "unifi_visitor_id": unifi_visitor_id,
+            "nuki_auth_id": nuki_auth_id,
         })
+        entries.sort(key=lambda e: e["start_ts"])
+        _save_history(entries)
+    return entry_id
+
+
+async def update_history_entry(entry_id, start_ts, end_ts, systems):
+    """Aktualisiert Zeitraum und System-Status eines bestehenden Historie-Eintrags
+    nach einer erfolgreichen Zeitraum-Aenderung. Unbekannte entry_id ist ein
+    stiller No-Op (Eintrag kann inzwischen abgelaufen und automatisch entfernt
+    worden sein)."""
+    async with HISTORY_LOCK:
+        entries = _load_history()
+        for e in entries:
+            if e.get("entry_id") == entry_id:
+                e["start_ts"] = start_ts
+                e["end_ts"] = end_ts
+                e["systems"] = systems
+                break
+        now = time.time()
+        entries = [e for e in entries if e.get("end_ts", 0) >= now]
         entries.sort(key=lambda e: e["start_ts"])
         _save_history(entries)
 
@@ -408,6 +596,15 @@ async def get_current_history():
             _save_history(current)
         current.sort(key=lambda e: e["start_ts"])
         return current
+
+
+async def find_history_entry(entry_id):
+    """Sucht einen einzelnen Historie-Eintrag anhand seiner entry_id (fuer die
+    Bearbeiten-Ansicht im Dashboard)."""
+    for e in await get_current_history():
+        if e.get("entry_id") == entry_id:
+            return e
+    return None
 
 
 async def fetch_unifi_visitors(session):
@@ -735,7 +932,7 @@ async def handle(request):
     session = request.app["http"]
 
     try:
-        pin, succeeded, unconfirmed, failed = await create_access_for_home(
+        pin, succeeded, unconfirmed, failed, unifi_visitor_id, nuki_auth_id = await create_access_for_home(
             session, home, first, last, start_ts, end_ts,
             f"Smoobu Booking {booking_id}", property_name,
         )
@@ -762,6 +959,7 @@ async def handle(request):
     await record_visit(
         property_name, first, last, pin, start_ts, end_ts,
         succeeded + [f"{u} (unbestätigt)" for u in unconfirmed], "Webhook", booking_id,
+        unifi_visitor_id, nuki_auth_id,
     )
 
     await push_pin_to_smoobu(session, booking_id, pin)
@@ -832,7 +1030,10 @@ DASHBOARD_STYLE = """
 """
 
 
-def render_dashboard(bookings, homes_list, history=None, form=None, error=None, success=None, bookings_error=None):
+def render_dashboard(
+    bookings, homes_list, history=None, form=None, error=None, success=None, bookings_error=None,
+    edit_entry=None, edit_form=None,
+):
     form = form or {}
     history = history or []
 
@@ -868,6 +1069,11 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
         is_active = h.get("start_ts", 0) <= now <= h.get("end_ts", 0)
         status_label = "Gerade vor Ort" if is_active else "Kommend"
         status_class = "badge badge-active" if is_active else "badge badge-upcoming"
+        editable = bool(h.get("entry_id")) and bool(h.get("unifi_visitor_id") or h.get("nuki_auth_id"))
+        if editable:
+            edit_cell = f'<a href="./?edit={esc(h["entry_id"])}#zeitraum-aendern">Bearbeiten</a>'
+        else:
+            edit_cell = '<span class="hint">–</span>'
         history_rows.append(f"""
             <tr>
                 <td data-label="Gast">{esc(name)}</td>
@@ -877,9 +1083,10 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
                 <td data-label="Zeitraum">{esc(format_ts(h['start_ts']))} – {esc(format_ts(h['end_ts']))}</td>
                 <td data-label="System(e)">{esc(', '.join(h.get('systems', [])))}</td>
                 <td data-label="Quelle">{esc(h.get('source'))}</td>
+                <td data-label="Aktion" class="td-action">{edit_cell}</td>
             </tr>
         """)
-    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="7" class="empty-row">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
+    history_html = "".join(history_rows) if history_rows else '<tr><td colspan="8" class="empty-row">Noch keine aktuellen/kommenden Besucher angelegt.</td></tr>'
     unknown_pin_note = ""
     if any(h.get("pin") == "unbekannt" for h in history):
         unknown_pin_note = (
@@ -887,6 +1094,40 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
             'über dieses Dashboard/den Webhook angelegt (z.&nbsp;B. manuell in der UniFi-App oder von vor '
             'dieser Funktion) - UniFi gibt den PIN im Nachhinein nicht mehr im Klartext zurück.</p>'
         )
+
+    edit_section_html = ""
+    if edit_entry:
+        edit_form = edit_form or {}
+        edit_name = f"{edit_entry.get('first_name', '')} {edit_entry.get('last_name', '')}".strip()
+        edit_section_html = f"""
+<h2 id="zeitraum-aendern">Zeitraum ändern: {esc(edit_name)}</h2>
+<p>Wohnung <strong>{esc(edit_entry.get('home'))}</strong> · PIN <span class="pin">{esc(edit_entry.get('pin'))}</span>
+bleibt unverändert - es wird nur der Zeitraum in UniFi Access und/oder Nuki aktualisiert.</p>
+<form method="post" action="./edit">
+    <input type="hidden" name="entry_id" value="{esc(edit_entry.get('entry_id'))}">
+    <div class="field-row">
+        <div>
+            <label for="edit_arrival">Anreise</label><br>
+            <input type="date" name="arrival" id="edit_arrival" value="{esc(edit_form.get('arrival'))}" required>
+        </div>
+        <div>
+            <label for="edit_checkin_time">Uhrzeit</label><br>
+            <input type="time" name="checkin_time" id="edit_checkin_time" value="{esc(edit_form.get('checkin_time'))}" required>
+        </div>
+    </div>
+    <div class="field-row">
+        <div>
+            <label for="edit_departure">Abreise</label><br>
+            <input type="date" name="departure" id="edit_departure" value="{esc(edit_form.get('departure'))}" required>
+        </div>
+        <div>
+            <label for="edit_checkout_time">Uhrzeit</label><br>
+            <input type="time" name="checkout_time" id="edit_checkout_time" value="{esc(edit_form.get('checkout_time'))}" required>
+        </div>
+    </div>
+    <button type="submit">Zeitraum speichern</button>
+</form>
+"""
 
     home_options = ['<option value="">-- Wohnung wählen --</option>']
     for h in homes_list:
@@ -916,10 +1157,11 @@ def render_dashboard(bookings, homes_list, history=None, form=None, error=None, 
 
 <h2>Aktuelle & kommende Besucher</h2>
 <table class="stack">
-    <thead><tr><th>Gast</th><th>Status</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th></tr></thead>
+    <thead><tr><th>Gast</th><th>Status</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th><th>Aktion</th></tr></thead>
     <tbody>{history_html}</tbody>
 </table>
 {unknown_pin_note}
+{edit_section_html}
 
 <h2>Aktuelle & kommende Buchungen</h2>
 <table class="stack">
@@ -996,8 +1238,26 @@ async def dashboard_page(request):
 
     history = await build_display_history(session)
 
+    edit_entry = None
+    edit_form = None
+    edit_id = request.query.get("edit")
+    if edit_id:
+        edit_entry = await find_history_entry(edit_id)
+        if edit_entry and (edit_entry.get("unifi_visitor_id") or edit_entry.get("nuki_auth_id")):
+            arrival, checkin_time = ts_to_date_time(edit_entry["start_ts"])
+            departure, checkout_time = ts_to_date_time(edit_entry["end_ts"])
+            edit_form = {
+                "arrival": arrival, "checkin_time": checkin_time,
+                "departure": departure, "checkout_time": checkout_time,
+            }
+        else:
+            edit_entry = None
+
     return web.Response(
-        text=render_dashboard(bookings, homes, history=history, form=form, bookings_error=bookings_error),
+        text=render_dashboard(
+            bookings, homes, history=history, form=form, bookings_error=bookings_error,
+            edit_entry=edit_entry, edit_form=edit_form,
+        ),
         content_type="text/html",
     )
 
@@ -1051,7 +1311,7 @@ async def dashboard_create_visitor(request):
         remarks += f" (Buchung {form['booking_id']})"
 
     try:
-        pin, succeeded, unconfirmed, failed = await create_access_for_home(
+        pin, succeeded, unconfirmed, failed, unifi_visitor_id, nuki_auth_id = await create_access_for_home(
             session, home, first, last, start_ts, end_ts, remarks, home["name"],
         )
     except NoProviderConfigured as e:
@@ -1070,6 +1330,7 @@ async def dashboard_create_visitor(request):
     await record_visit(
         home["name"], first, last, pin, start_ts, end_ts,
         succeeded + [f"{u} (unbestätigt)" for u in unconfirmed], "Manuell", form["booking_id"] or None,
+        unifi_visitor_id, nuki_auth_id,
     )
 
     if form["booking_id"]:
@@ -1088,6 +1349,107 @@ async def dashboard_create_visitor(request):
     )
     if form["booking_id"]:
         success += " – PIN wurde außerdem an die verknüpfte Smoobu-Buchung übertragen."
+    if unconfirmed:
+        success += (
+            f'</p><p class="msg-error">Hinweis: {html.escape(", ".join(unconfirmed))} wurde angenommen, '
+            f"aber nicht als aktiv bestätigt (Nukis API ist asynchron - ggf. Sync-Verzögerung, bitte "
+            f"in ein paar Minuten im Nuki-Account prüfen)."
+        )
+    if failed:
+        success += f'</p><p class="msg-error">Achtung, fehlgeschlagen: {html.escape("; ".join(failed))}'
+
+    return web.Response(
+        text=render_dashboard(bookings, homes, history=history, success=success, bookings_error=bookings_error),
+        content_type="text/html",
+    )
+
+
+async def dashboard_update_visitor(request):
+    """Aendert Anreise/Abreise (Datum & Uhrzeit) eines bereits angelegten Besuchers -
+    PIN bleibt gleich, es wird nur der Zeitraum in UniFi Access und/oder Nuki per
+    Update aktualisiert (kein Neuanlegen, keine erneute PIN-Rueckschreibung an
+    Smoobu noetig, da sich der PIN nicht aendert)."""
+    session = request.app["http"]
+    data = await request.post()
+
+    entry_id = (data.get("entry_id") or "").strip()
+    form = {
+        "arrival": (data.get("arrival") or "").strip(),
+        "departure": (data.get("departure") or "").strip(),
+        "checkin_time": (data.get("checkin_time") or "").strip() or DEFAULT_CHECKIN_TIME,
+        "checkout_time": (data.get("checkout_time") or "").strip() or DEFAULT_CHECKOUT_TIME,
+    }
+
+    bookings, bookings_error = [], None
+    try:
+        bookings = await fetch_smoobu_bookings(session)
+    except aiohttp.ClientError as e:
+        bookings_error = str(e)
+
+    history = await build_display_history(session)
+    entry = await find_history_entry(entry_id)
+
+    def error_page(message, status=400):
+        return web.Response(
+            text=render_dashboard(
+                bookings, homes, history=history, error=message, bookings_error=bookings_error,
+                edit_entry=entry, edit_form=form,
+            ),
+            content_type="text/html",
+            status=status,
+        )
+
+    if not entry or not (entry.get("unifi_visitor_id") or entry.get("nuki_auth_id")):
+        return error_page(
+            "Dieser Besucher kann nicht bearbeitet werden (kein bearbeitbarer Eintrag gefunden - "
+            "ggf. bereits abgelaufen oder von vor Einführung dieser Funktion angelegt).",
+            status=404,
+        )
+
+    home = find_home(entry["home"])
+    if not home:
+        return error_page(f"Wohnung '{entry['home']}' ist nicht mehr konfiguriert.")
+
+    try:
+        start_ts = to_unix_datetime(form["arrival"], form["checkin_time"])
+        end_ts = to_unix_datetime(form["departure"], form["checkout_time"])
+    except ValueError as e:
+        return error_page(f"Ungültiges Datums-/Zeitformat: {e}")
+
+    first = entry.get("first_name", "")
+    last = entry.get("last_name", "")
+    remarks = "Zeitraum geändert im Dashboard"
+    if entry.get("booking_id"):
+        remarks += f" (Buchung {entry['booking_id']})"
+
+    succeeded, unconfirmed, failed = await update_access_for_home(
+        session, home, entry, first, last, start_ts, end_ts, remarks, home["name"],
+    )
+
+    if not succeeded and not unconfirmed and not failed:
+        return error_page("Für diesen Besucher sind keine aktualisierbaren Systeme hinterlegt.", status=422)
+
+    if failed and not succeeded and not unconfirmed:
+        log.error("Zeitraum-Update fehlgeschlagen (Wohnung %s): %s", home["name"], failed)
+        return error_page(f"Fehler beim Ändern des Zeitraums: {'; '.join(failed)}", status=502)
+
+    log.info(
+        "Zeitraum geändert: %s %s, Wohnung %s, Systeme: %s%s",
+        first, last, home["name"], ", ".join(succeeded),
+        f" (unbestätigt: {', '.join(unconfirmed)})" if unconfirmed else "",
+    )
+
+    await update_history_entry(
+        entry_id, start_ts, end_ts, succeeded + [f"{u} (unbestätigt)" for u in unconfirmed],
+    )
+
+    history = await build_display_history(session)
+
+    systeme = ", ".join(succeeded) or "-"
+    success = (
+        f"Zeitraum für <strong>{html.escape(first)} {html.escape(last)}</strong> aktualisiert "
+        f"({html.escape(systeme)})."
+    )
     if unconfirmed:
         success += (
             f'</p><p class="msg-error">Hinweis: {html.escape(", ".join(unconfirmed))} wurde angenommen, '
@@ -1123,6 +1485,7 @@ def build_dashboard_app(http_session):
     app["http"] = http_session
     app.router.add_get("/", dashboard_page)
     app.router.add_post("/visitor", dashboard_create_visitor)
+    app.router.add_post("/edit", dashboard_update_visitor)
     return app
 
 

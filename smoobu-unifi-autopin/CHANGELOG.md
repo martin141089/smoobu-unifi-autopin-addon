@@ -2,6 +2,25 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.12.0]
+
+### Hinzugefügt
+- **Zeitraum eines Besuchers im Dashboard änderbar.** In der Tabelle „Aktuelle &
+  kommende Besucher" gibt es jetzt pro Eintrag einen Link „Bearbeiten", über den sich
+  Anreise/Abreise (Datum **und** Uhrzeit) nachträglich anpassen lassen - der PIN
+  bleibt dabei unverändert, es wird nur der Zeitraum in UniFi Access und/oder Nuki
+  aktualisiert (kein Neuanlegen, keine erneute PIN-Rückschreibung an Smoobu nötig, da
+  sich der PIN nicht ändert). Genutzt werden dafür `PUT /visitors/:id` bei UniFi
+  Access bzw. `POST /smartlock/{id}/auth/{authId}` bei Nuki - beides offizielle
+  Update-Endpunkte der jeweiligen APIs. Auch der Nuki-Zeitraum-Update wird laut
+  Nuki-Doku asynchron verarbeitet, daher gilt dieselbe mehrfache Bestätigungsprüfung
+  wie beim Anlegen.
+- Verfügbar ist „Bearbeiten" nur für Besucher, die über dieses Add-on angelegt wurden
+  (die dafür nötige UniFi-Visitor- bzw. Nuki-Auth-ID wird ab dieser Version in der
+  lokalen Historie mitgespeichert). Ältere, vor dieser Funktion angelegte Einträge
+  sowie extern in UniFi Access existierende Visitors („PIN unbekannt") zeigen
+  stattdessen „–" an.
+
 ## [3.11.1]
 
 ### Behoben
