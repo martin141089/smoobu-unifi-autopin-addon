@@ -1,5 +1,5 @@
 name: "Smoobu UniFi Access AutoPIN"
-version: "3.14.1"
+version: "3.15.0"
 slug: "smoobu_unifi_autopin"
 description: "Multi-Standort PIN- & Visitor-Automation für UniFi Access + Smoobu von Martin Henschke"
 url: "https://github.com/martin141089/smoobu-unifi-autopin-addon"
@@ -21,6 +21,7 @@ ingress_port: 8100
 panel_admin: false
 panel_icon: mdi:key-variant
 panel_title: "FeWo-Tür-PIN"
+homeassistant_api: true
 
 options:
   smoobu_api_key: ""
@@ -32,6 +33,7 @@ options:
   admin_email: ""
   default_checkin_time: "15:00"
   default_checkout_time: "11:00"
+  notify_on_failure: true
   homes_count: 1
 
   home1_name: ""
@@ -64,6 +66,7 @@ schema:
   admin_email: email?
   default_checkin_time: str?
   default_checkout_time: str?
+  notify_on_failure: bool
   homes_count: int
 
   home1_name: str?

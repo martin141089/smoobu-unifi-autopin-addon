@@ -6,6 +6,18 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.15.0]
+
+### Hinzugefügt
+- **Home-Assistant-Benachrichtigung bei fehlgeschlagenen/unbestätigten PINs.** Neue
+  Option `notify_on_failure` (Standard `true`): schlägt die Visitor-/Code-Anlage in
+  UniFi Access oder Nuki fehl, oder bestätigt sich ein Nuki-Code auch nach der
+  Hintergrundprüfung (siehe 3.14.0) nicht, meldet das Add-on das jetzt direkt an Home
+  Assistant - als `persistent_notification` sowie als Event `smoobu_autopin_failed`
+  (Felder `guest`, `home`, `reason`) für eigene Automatisierungen, z.&nbsp;B. eine
+  Push-Benachrichtigung aufs Handy. Dafür ist `homeassistant_api: true` aktiviert,
+  wodurch automatisch ein `SUPERVISOR_TOKEN` zur Verfügung steht.
+
 ## [3.14.1]
 
 ### Behoben

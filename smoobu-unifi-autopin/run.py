@@ -41,9 +41,55 @@ WEBHOOK_SECRET = opts["webhook_secret"]
 NUKI_API_TOKEN = opts.get("nuki_api_token", "").strip()
 ADMIN_EMAIL = opts.get("admin_email", "").strip()
 HOMES_COUNT = opts["homes_count"]
+NOTIFY_ON_FAILURE = bool(opts.get("notify_on_failure", True))
 
 HISTORY_PATH = Path("/data/visitor_history.json")
 HISTORY_LOCK = asyncio.Lock()
+
+# Fuer Benachrichtigungen bei fehlgeschlagenen/nicht bestaetigten PINs wird die
+# Home-Assistant-Core-API ueber den Supervisor-Proxy angesprochen (erfordert
+# "homeassistant_api: true" in config.yaml, dann steht SUPERVISOR_TOKEN automatisch
+# als Env-Var zur Verfuegung - kein eigener HA-Long-Lived-Token noetig).
+SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
+HA_API_BASE = "http://supervisor/core/api"
+HA_NOTIFICATION_ID = "smoobu_autopin_failure"
+
+
+async def notify_ha_failure(session, guest, home_name, reason):
+    """Meldet einen fehlgeschlagenen oder dauerhaft unbestaetigten PIN an Home
+    Assistant - als persistent_notification (sofort sichtbar in der HA-Glocke, ohne
+    Zusatzkonfiguration) und als Event "smoobu_autopin_failed" (fuer eigene
+    Automatisierungen, z.B. Push-Benachrichtigung aufs Handy). Best-effort: ein
+    Fehler hier wird nur geloggt, blockiert aber nie den eigentlichen Ablauf."""
+    if not NOTIFY_ON_FAILURE or not SUPERVISOR_TOKEN:
+        return
+
+    headers = {
+        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    title = "AutoPIN: Zutritt nicht angelegt"
+    message = f"{guest} ({home_name}): {reason}"
+
+    try:
+        async with session.post(
+            f"{HA_API_BASE}/services/persistent_notification/create",
+            headers=headers,
+            json={"title": title, "message": message, "notification_id": HA_NOTIFICATION_ID},
+        ) as r:
+            r.raise_for_status()
+    except aiohttp.ClientError as e:
+        log.warning("HA-Benachrichtigung (persistent_notification) fehlgeschlagen: %s", e)
+
+    try:
+        async with session.post(
+            f"{HA_API_BASE}/events/smoobu_autopin_failed",
+            headers=headers,
+            json={"guest": guest, "home": home_name, "reason": reason},
+        ) as r:
+            r.raise_for_status()
+    except aiohttp.ClientError as e:
+        log.warning("HA-Event 'smoobu_autopin_failed' konnte nicht gefeuert werden: %s", e)
 
 
 def _normalize_time(value, fallback):
@@ -465,6 +511,11 @@ async def _reconfirm_nuki_later(session, lock_id, pin, first, last, home_name, s
         "bitte manuell im Nuki-Account prüfen",
         first, last, home_name, NUKI_BACKGROUND_RETRY_MINUTES,
     )
+    await notify_ha_failure(
+        session, f"{first} {last}".strip(), home_name,
+        f"Nuki-Code wurde angenommen, aber auch nach {NUKI_BACKGROUND_RETRY_MINUTES} Minuten Prüfung nicht "
+        "bestätigt - bitte manuell im Nuki-Account prüfen.",
+    )
 
 
 async def _reconfirm_nuki_update_later(session, lock_id, auth_id, expected_from, expected_until, first, last, home_name, entry_id):
@@ -496,6 +547,11 @@ async def _reconfirm_nuki_update_later(session, lock_id, auth_id, expected_from,
         "Nuki-Zeitraum-Update für %s %s (Wohnung %s) auch nach %d Minuten Hintergrund-Prüfung nicht bestätigt - "
         "bitte manuell im Nuki-Account prüfen",
         first, last, home_name, NUKI_BACKGROUND_RETRY_MINUTES,
+    )
+    await notify_ha_failure(
+        session, f"{first} {last}".strip(), home_name,
+        f"Nuki-Zeitraum-Update wurde angenommen, aber auch nach {NUKI_BACKGROUND_RETRY_MINUTES} Minuten Prüfung "
+        "nicht bestätigt - bitte manuell im Nuki-Account prüfen.",
     )
 
 
@@ -530,6 +586,9 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
         except aiohttp.ClientError as e:
             log.error("UniFi Visitor-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"UniFi Access ({e})")
+            await notify_ha_failure(
+                session, f"{first} {last}".strip(), home["name"], f"UniFi Access fehlgeschlagen: {e}",
+            )
 
     if home["nuki_smartlock_id"]:
         try:
@@ -553,6 +612,7 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
         except (aiohttp.ClientError, ValueError) as e:
             log.error("Nuki-Code-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"Nuki ({e})")
+            await notify_ha_failure(session, f"{first} {last}".strip(), home["name"], f"Nuki fehlgeschlagen: {e}")
 
     if not succeeded and not unconfirmed and not failed:
         raise NoProviderConfigured(f"Für Wohnung '{home['name']}' ist weder UniFi Access noch Nuki konfiguriert")
@@ -584,6 +644,9 @@ async def update_access_for_home(session, home, entry, first, last, start_ts, en
         except aiohttp.ClientError as e:
             log.error("UniFi Visitor-Update fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"UniFi Access ({e})")
+            await notify_ha_failure(
+                session, f"{first} {last}".strip(), home["name"], f"UniFi Access Update fehlgeschlagen: {e}",
+            )
 
     nuki_auth_id = entry.get("nuki_auth_id")
     if nuki_auth_id and home["nuki_smartlock_id"]:
@@ -609,6 +672,9 @@ async def update_access_for_home(session, home, entry, first, last, start_ts, en
         except (aiohttp.ClientError, ValueError) as e:
             log.error("Nuki-Zeitraum-Update fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"Nuki ({e})")
+            await notify_ha_failure(
+                session, f"{first} {last}".strip(), home["name"], f"Nuki-Zeitraum-Update fehlgeschlagen: {e}",
+            )
 
     return succeeded, unconfirmed, failed
 
