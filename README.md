@@ -64,6 +64,9 @@ merken müssen — auch wenn eine Wohnung zwei Türen mit unterschiedlichen Syst
     `default_checkout_time`), pro Besuch zusätzlich individuell anpassbar
 *   Zeitraum bereits angelegter Besucher im Dashboard nachträglich änderbar (PIN
     bleibt gleich, nur der Zeitraum wird in UniFi Access und/oder Nuki aktualisiert)
+*   Optionale **Home-Assistant-Benachrichtigung** bei fehlgeschlagenen oder dauerhaft
+    unbestätigten PIN-Anlagen (`notify_on_failure`) — als persistent_notification und
+    als Event für eigene Automatisierungen (z.&nbsp;B. Push aufs Handy)
 *   Korrekte Filterung des Smoobu‑Webhooks nach Event‑Typ (nur neue/geänderte Buchungen lösen eine PIN aus)
 *   Unterstützung für Umlaute & Namens‑Trennung
 *   Nicht‑blockierende Verarbeitung (asynchrones HTTP für UniFi & Smoobu)
@@ -133,6 +136,7 @@ options:
   admin_email: ""
   default_checkin_time: "15:00"
   default_checkout_time: "11:00"
+  notify_on_failure: true
 
   homes_count: 1
 
@@ -156,6 +160,31 @@ options:
   home4_door_group_id: ""
   home4_nuki_smartlock_id: ""
 ```
+
+**Wichtig seit Version 3.15:** `notify_on_failure` (Standard `true`) meldet fehlgeschlagene
+oder dauerhaft unbestätigte PIN-Anlagen/-Änderungen direkt an Home Assistant — als
+**persistent_notification** (erscheint sofort in der HA-Glocke, ohne weitere Einrichtung)
+sowie als **Event** `smoobu_autopin_failed` mit den Feldern `guest`, `home` und `reason`.
+Über das Event lässt sich z.&nbsp;B. eine Push-Benachrichtigung aufs Handy bauen:
+
+```yaml
+automation:
+  - alias: "AutoPIN Fehler → Push"
+    trigger:
+      - platform: event
+        event_type: smoobu_autopin_failed
+    action:
+      - service: notify.mobile_app_dein_handy
+        data:
+          title: "AutoPIN: Zutritt nicht angelegt"
+          message: >
+            {{ trigger.event.data.guest }} ({{ trigger.event.data.home }}):
+            {{ trigger.event.data.reason }}
+```
+
+Dafür ist `homeassistant_api: true` im Add-on aktiviert — dadurch steht automatisch ein
+`SUPERVISOR_TOKEN` zur Verfügung, ein eigener HA-Token ist nicht nötig. Deaktivierbar über
+`notify_on_failure: false`.
 
 **Wichtig seit Version 3.9:** `default_checkin_time` (Standard `15:00`) und
 `default_checkout_time` (Standard `11:00`) legen die Standard‑Uhrzeiten für Ein‑/Auszug
