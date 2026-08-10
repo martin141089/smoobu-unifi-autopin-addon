@@ -37,6 +37,8 @@ Es ist **komplett sicher**, denn:
     Smoobu, z.&nbsp;B. für Handwerker oder Reinigung)
 *   Konfigurierbare Standard‑Check‑in‑/Check‑out‑Zeiten (`default_checkin_time`,
     `default_checkout_time`), pro Besuch zusätzlich individuell anpassbar
+*   Zeitraum bereits angelegter Besucher im Dashboard nachträglich änderbar (PIN
+    bleibt gleich, nur der Zeitraum wird in UniFi Access und/oder Nuki aktualisiert)
 *   Korrekte Filterung des Smoobu‑Webhooks nach Event‑Typ (nur neue/geänderte Buchungen lösen eine PIN aus)
 *   Unterstützung für Umlaute & Namens‑Trennung
 *   Nicht‑blockierende Verarbeitung (asynchrones HTTP für UniFi & Smoobu)
@@ -215,6 +217,11 @@ Das Dashboard zeigt:
     angezeigt, die direkt in UniFi Access existieren, aber nicht über dieses Add-on
     angelegt wurden (z.&nbsp;B. manuell in der UniFi-App) — hier ist der PIN als
     „unbekannt“ markiert, da UniFi ihn nachträglich nicht mehr im Klartext herausgibt.
+*   Einen Link **„Bearbeiten“** pro Besucher, über den sich Anreise/Abreise (Datum
+    **und** Uhrzeit) nachträglich ändern lassen — der PIN bleibt dabei unverändert, es
+    wird nur der Zeitraum in UniFi Access und/oder Nuki aktualisiert. Verfügbar nur für
+    Besucher, die über dieses Add-on angelegt wurden; bei älteren Einträgen sowie
+    extern angelegten UniFi-Visitoren steht stattdessen „–“.
 *   Eine Tabelle aller aktuellen und kommenden Smoobu‑Buchungen (Gast, Wohnung, An‑/Abreise)
 *   Einen Link „Besucher anlegen“ pro Buchung, der das Formular darunter mit Name, Wohnung
     und Zeitraum (inkl. Uhrzeit, sofern von Smoobu geliefert, sonst Standardzeiten) vorausfüllt
