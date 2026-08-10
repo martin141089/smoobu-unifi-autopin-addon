@@ -6,6 +6,17 @@ Die für Home Assistant maßgebliche Version dieser Datei liegt unter
 [smoobu-unifi-autopin/CHANGELOG.md](smoobu-unifi-autopin/CHANGELOG.md) (dort liest der
 Supervisor sie aus).
 
+## [3.13.0]
+
+### Hinzugefügt
+- **Bestehende Besucher nachträglich bearbeitbar machen.** Der in 3.12.0 eingeführte
+  „Bearbeiten"-Link setzt eine lokal gespeicherte UniFi-Visitor-ID bzw. Nuki-Auth-ID
+  voraus - Besucher, die vor diesem Update angelegt wurden, hatten diese IDs noch
+  nicht und zeigten daher „–" statt „Bearbeiten". Im Dashboard erscheint jetzt ein
+  Hinweis-Banner mit Button „Jetzt verknüpfen", sobald solche Alteinträge vorhanden
+  sind: er sucht sie einmalig in UniFi Access (per Name + Zeitraum) bzw. Nuki (per
+  PIN-Code) und verknüpft sie nachträglich - der PIN selbst bleibt dabei unangetastet.
+
 ## [3.12.0]
 
 ### Hinzugefügt
