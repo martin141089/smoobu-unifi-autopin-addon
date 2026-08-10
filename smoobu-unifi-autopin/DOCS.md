@@ -221,7 +221,10 @@ Das Dashboard zeigt:
     **und** Uhrzeit) nachträglich ändern lassen — der PIN bleibt dabei unverändert, es
     wird nur der Zeitraum in UniFi Access und/oder Nuki aktualisiert. Verfügbar nur für
     Besucher, die über dieses Add-on angelegt wurden; bei älteren Einträgen sowie
-    extern angelegten UniFi-Visitoren steht stattdessen „–“.
+    extern angelegten UniFi-Visitoren steht stattdessen „–“. Für Besucher, die vor der
+    Einführung dieser Funktion (Version 3.12.0) angelegt wurden, erscheint stattdessen
+    ein Hinweis-Banner mit Button **„Jetzt verknüpfen“**, der sie einmalig in UniFi
+    Access/Nuki wiederfindet und nachträglich bearbeitbar macht.
 *   Eine Tabelle aller aktuellen und kommenden Smoobu‑Buchungen (Gast, Wohnung, An‑/Abreise)
 *   Einen Link „Besucher anlegen“ pro Buchung, der das Formular darunter mit Name, Wohnung
     und Zeitraum (inkl. Uhrzeit, sofern von Smoobu geliefert, sonst Standardzeiten) vorausfüllt

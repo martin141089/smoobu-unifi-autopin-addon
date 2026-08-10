@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.13.0]
+
+### Hinzugefügt
+- **Bestehende Besucher nachträglich bearbeitbar machen.** Der in 3.12.0 eingeführte
+  „Bearbeiten"-Link setzt eine lokal gespeicherte UniFi-Visitor-ID bzw. Nuki-Auth-ID
+  voraus - Besucher, die vor diesem Update angelegt wurden, hatten diese IDs noch
+  nicht und zeigten daher „–" statt „Bearbeiten". Im Dashboard erscheint jetzt ein
+  Hinweis-Banner mit Button **„Jetzt verknüpfen"**, sobald solche Alteinträge
+  vorhanden sind: er sucht sie einmalig in UniFi Access (per Name + Zeitraum) bzw.
+  Nuki (per PIN-Code) und verknüpft sie nachträglich - der PIN selbst bleibt dabei
+  unangetastet. Danach lassen sie sich wie neu angelegte Besucher bearbeiten.
+  Einträge, die nicht eindeutig wiedergefunden werden (z.&nbsp;B. inzwischen in
+  UniFi/Nuki gelöscht), bleiben unverändert bei „–".
+
 ## [3.12.0]
 
 ### Hinzugefügt

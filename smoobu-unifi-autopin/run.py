@@ -691,6 +691,100 @@ async def build_display_history(session):
     return merged
 
 
+async def backfill_history_ids(session):
+    """Verknuepft bestehende Historie-Eintraege (angelegt vor Einfuehrung der
+    Bearbeiten-Funktion in 3.12.0 - denen also entry_id/unifi_visitor_id/nuki_auth_id
+    fehlen) nachtraeglich mit ihrer echten Provider-ID, indem sie in UniFi Access
+    anhand von Name+Zeitraum und in Nuki anhand des PIN-Codes wiedergefunden werden.
+    Danach lassen sie sich wie neu angelegte Besucher im Dashboard bearbeiten.
+
+    Betrifft ausschliesslich echte, vom Add-on selbst angelegte Historie-Eintraege -
+    die rein zur Anzeige zusammengemischten "Nur in UniFi"-Eintraege (PIN "unbekannt")
+    aus build_display_history() stehen nicht in der lokalen Datei und werden hier gar
+    nicht erst gesehen.
+
+    Gibt (verknuepft, unvollstaendig) zurueck - Anzahl der Eintraege, die durch diesen
+    Lauf vollstaendig bearbeitbar wurden, bzw. bei denen weiterhin mindestens eine
+    Provider-ID fehlt (z.B. weil der Visitor/Code in der Zwischenzeit geloescht wurde).
+    """
+    entries = await get_current_history()
+
+    needs_unifi = any(
+        "UniFi Access" in e.get("systems", []) and not e.get("unifi_visitor_id")
+        for e in entries
+    )
+    raw_unifi_visitors = []
+    if needs_unifi:
+        try:
+            raw_unifi_visitors = await fetch_unifi_visitors(session)
+        except aiohttp.ClientError as e:
+            log.warning("UniFi-Visitors konnten für Verknüpfung nicht geladen werden: %s", e)
+
+    updates = {}
+    fully_linked = 0
+    still_incomplete = 0
+
+    for e in entries:
+        was_editable = bool(e.get("entry_id")) and bool(e.get("unifi_visitor_id") or e.get("nuki_auth_id"))
+        if was_editable:
+            continue
+
+        key = (
+            e.get("first_name", "").strip().lower(), e.get("last_name", "").strip().lower(),
+            e.get("start_ts"), e.get("end_ts"),
+        )
+        fields = {}
+
+        if "UniFi Access" in e.get("systems", []) and not e.get("unifi_visitor_id"):
+            match = next((
+                v for v in raw_unifi_visitors
+                if (v.get("first_name") or "").strip().lower() == key[0]
+                and (v.get("last_name") or "").strip().lower() == key[1]
+                and v.get("start_time") == key[2]
+                and v.get("end_time") == key[3]
+            ), None)
+            if match and match.get("id"):
+                fields["unifi_visitor_id"] = match["id"]
+
+        nuki_system = next((s for s in e.get("systems", []) if s.startswith("Nuki")), None)
+        if nuki_system is not None and not e.get("nuki_auth_id"):
+            home = find_home(e.get("home", ""))
+            if home and home["nuki_smartlock_id"]:
+                lock_id = _parse_nuki_smartlock_id(home["nuki_smartlock_id"])
+                auth = await _find_nuki_auth(session, lock_id, e["pin"])
+                if auth and auth.get("id"):
+                    fields["nuki_auth_id"] = auth["id"]
+
+        if not e.get("entry_id"):
+            fields["entry_id"] = uuid.uuid4().hex
+
+        if fields:
+            updates[key] = fields
+
+        now_editable = bool(fields.get("entry_id") or e.get("entry_id")) and bool(
+            fields.get("unifi_visitor_id") or e.get("unifi_visitor_id")
+            or fields.get("nuki_auth_id") or e.get("nuki_auth_id")
+        )
+        if now_editable:
+            fully_linked += 1
+        else:
+            still_incomplete += 1
+
+    if updates:
+        async with HISTORY_LOCK:
+            current = _load_history()
+            for c in current:
+                key = (
+                    c.get("first_name", "").strip().lower(), c.get("last_name", "").strip().lower(),
+                    c.get("start_ts"), c.get("end_ts"),
+                )
+                if key in updates:
+                    c.update(updates[key])
+            _save_history(current)
+
+    return fully_linked, still_incomplete
+
+
 def _smoobu_signature(method, path, query, timestamp, nonce, body_hash):
     canonical = f"{method}\n{path}\n{query}\n{timestamp}\n{nonce}\n{body_hash}\n{SMOOBU_API_KEY}"
     sig = hmac.new(
@@ -989,6 +1083,13 @@ DASHBOARD_STYLE = """
     .pin { font-size: 1.4rem; font-weight: bold; letter-spacing: 0.1rem; }
     .pin-unknown { font-size: 0.95rem; font-weight: normal; font-style: italic; letter-spacing: normal; color: #888; }
     .hint { font-size: 0.85rem; color: #666; margin-top: 0.3rem; }
+    .banner-form {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        background: #eef4fb; border: 1px solid #cfe0f0; border-radius: 6px;
+        padding: 0.6rem 1rem; margin-top: 0.5rem; flex-wrap: wrap;
+    }
+    .banner-form p { margin: 0; font-size: 0.9rem; }
+    .banner-form button { flex-shrink: 0; }
     .badge {
         display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px;
         font-size: 0.78rem; font-weight: bold; white-space: nowrap;
@@ -1063,6 +1164,7 @@ def render_dashboard(
     bookings_html = "".join(rows) if rows else '<tr><td colspan="5" class="empty-row">Keine aktuellen Buchungen gefunden.</td></tr>'
 
     history_rows = []
+    backfill_candidates = 0
     for h in history:
         name = f"{h.get('first_name', '')} {h.get('last_name', '')}".strip()
         pin_class = "pin" if h.get("pin") != "unbekannt" else "pin pin-unknown"
@@ -1070,6 +1172,8 @@ def render_dashboard(
         status_label = "Gerade vor Ort" if is_active else "Kommend"
         status_class = "badge badge-active" if is_active else "badge badge-upcoming"
         editable = bool(h.get("entry_id")) and bool(h.get("unifi_visitor_id") or h.get("nuki_auth_id"))
+        if not editable and h.get("pin") != "unbekannt":
+            backfill_candidates += 1
         if editable:
             edit_cell = f'<a href="./?edit={esc(h["entry_id"])}#zeitraum-aendern">Bearbeiten</a>'
         else:
@@ -1094,6 +1198,18 @@ def render_dashboard(
             'über dieses Dashboard/den Webhook angelegt (z.&nbsp;B. manuell in der UniFi-App oder von vor '
             'dieser Funktion) - UniFi gibt den PIN im Nachhinein nicht mehr im Klartext zurück.</p>'
         )
+
+    backfill_banner = ""
+    if backfill_candidates:
+        plural = "e" if backfill_candidates != 1 else ""
+        backfill_banner = f"""
+<form method="post" action="./link-existing" class="banner-form">
+    <p>{backfill_candidates} bereits angelegte{plural} Besucher {'sind' if backfill_candidates != 1 else 'ist'}
+    noch nicht bearbeitbar (angelegt vor Einführung dieser Funktion). Einmalig mit UniFi/Nuki abgleichen,
+    um „Bearbeiten“ dafür freizuschalten.</p>
+    <button type="submit">Jetzt verknüpfen</button>
+</form>
+"""
 
     edit_section_html = ""
     if edit_entry:
@@ -1156,6 +1272,7 @@ bleibt unverändert - es wird nur der Zeitraum in UniFi Access und/oder Nuki akt
 {banner}
 
 <h2>Aktuelle & kommende Besucher</h2>
+{backfill_banner}
 <table class="stack">
     <thead><tr><th>Gast</th><th>Status</th><th>Wohnung</th><th>PIN</th><th>Zeitraum</th><th>System(e)</th><th>Quelle</th><th>Aktion</th></tr></thead>
     <tbody>{history_html}</tbody>
@@ -1465,6 +1582,39 @@ async def dashboard_update_visitor(request):
     )
 
 
+async def dashboard_link_existing(request):
+    """Verknuepft einmalig alle bestehenden Historie-Eintraege, denen noch die
+    UniFi-Visitor-ID bzw. Nuki-Auth-ID fehlt (angelegt vor Einfuehrung der
+    Bearbeiten-Funktion in 3.12.0), mit ihrem echten Provider-Datensatz - siehe
+    backfill_history_ids()."""
+    session = request.app["http"]
+
+    fully_linked, still_incomplete = await backfill_history_ids(session)
+
+    bookings, bookings_error = [], None
+    try:
+        bookings = await fetch_smoobu_bookings(session)
+    except aiohttp.ClientError as e:
+        bookings_error = str(e)
+
+    history = await build_display_history(session)
+
+    parts = []
+    if fully_linked:
+        parts.append(f"{fully_linked} Besucher erfolgreich verknüpft und jetzt bearbeitbar")
+    if still_incomplete:
+        parts.append(
+            f"{still_incomplete} konnten nicht eindeutig zugeordnet werden "
+            "(z. B. in UniFi/Nuki inzwischen gelöscht oder verändert)"
+        )
+    success = (" – ".join(parts) + ".") if parts else "Es gab keine Besucher, die noch verknüpft werden mussten."
+
+    return web.Response(
+        text=render_dashboard(bookings, homes, history=history, success=success, bookings_error=bookings_error),
+        content_type="text/html",
+    )
+
+
 def build_main_app(http_session):
     """Webhook, Tür-Scan und Policy-Suche - direkt im LAN erreichbar (Port 8099)."""
     app = web.Application()
@@ -1486,6 +1636,7 @@ def build_dashboard_app(http_session):
     app.router.add_get("/", dashboard_page)
     app.router.add_post("/visitor", dashboard_create_visitor)
     app.router.add_post("/edit", dashboard_update_visitor)
+    app.router.add_post("/link-existing", dashboard_link_existing)
     return app
 
 
