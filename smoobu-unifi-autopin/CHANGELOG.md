@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.14.0]
+
+### Geändert
+- **Nuki-Bestätigung mit Hintergrundprüfung statt kurzem Zeitfenster.** Die bisherige
+  synchrone Prüfung (max. 8 Sekunden) reichte oft nicht aus: Nukis Bridge synct nicht
+  sofort mit der Cloud, sondern erst beim nächsten Poll-Intervall (typischerweise
+  einige zehn Sekunden bis wenige Minuten) - der Code kam in solchen Fällen meist
+  trotzdem korrekt an, wurde aber als "unbestätigt" gemeldet (Fehlalarm). Anlegen
+  und Ändern liefern weiterhin sofort eine Antwort, prüfen im Hintergrund aber bis zu
+  5 Minuten lang weiter (alle 20 Sekunden). Bestätigt sich der Code doch noch,
+  korrigiert sich der Eintrag in der Besucherübersicht automatisch von „unbestätigt"
+  auf bestätigt - ohne dass etwas manuell nachgeprüft werden muss. Bleibt der Code
+  auch danach unbestätigt, steht weiterhin klar im Log/Dashboard, dass eine manuelle
+  Prüfung im Nuki-Account sinnvoll ist.
+
 ## [3.13.0]
 
 ### Hinzugefügt
