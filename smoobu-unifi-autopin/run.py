@@ -402,6 +402,94 @@ async def update_nuki_code(session, smartlock_id, auth_id, name, start_ts, end_t
     return False
 
 
+# Die kurze synchrone Pruefung (NUKI_CONFIRM_RETRY_DELAYS, max. 8s) reicht oft nicht:
+# Nukis Bridge synct nicht sofort, sondern erst beim naechsten Poll-Intervall mit der
+# Cloud (laut Nuki-Forum typischerweise alle paar zehn Sekunden bis wenige Minuten) -
+# der Code kommt also meistens trotzdem an, nur zeitversetzt. Statt den Nutzer dafuer
+# im Browser warten zu lassen, wird im Hintergrund bis zu NUKI_BACKGROUND_RETRY_MINUTES
+# lang weitergeprueft; bestaetigt sich der Code doch noch, korrigiert sich der
+# Historie-Eintrag automatisch, ohne dass der Nutzer etwas tun muss.
+NUKI_BACKGROUND_RETRY_INTERVAL = 20
+NUKI_BACKGROUND_RETRY_MINUTES = 5
+
+
+async def _apply_nuki_confirmation(auth_id, entry_id=None, home_name=None, pin=None, start_ts=None, end_ts=None):
+    """Traegt eine nachtraeglich (im Hintergrund) bestaetigte Nuki-Auth-ID in den
+    passenden Historie-Eintrag ein und entfernt den "(unbestätigt)"-Zusatz aus der
+    Systemliste. Der Eintrag wird per entry_id gefunden (Zeitraum-Update-Fall) oder,
+    falls die noch nicht existiert (frische Anlage - record_visit() laeuft erst nach
+    create_access_for_home()), ueber Wohnung+PIN+Zeitraum als Ersatzschluessel."""
+    async with HISTORY_LOCK:
+        entries = _load_history()
+        for e in entries:
+            if entry_id:
+                if e.get("entry_id") != entry_id:
+                    continue
+            elif not (
+                e.get("home") == home_name and e.get("pin") == pin
+                and e.get("start_ts") == start_ts and e.get("end_ts") == end_ts
+            ):
+                continue
+            e["nuki_auth_id"] = auth_id
+            e["systems"] = ["Nuki" if s.startswith("Nuki") else s for s in e.get("systems", [])]
+            break
+        _save_history(entries)
+
+
+async def _reconfirm_nuki_later(session, lock_id, pin, first, last, home_name, start_ts, end_ts):
+    """Hintergrund-Pruefung fuer eine frisch angelegte, zunaechst unbestaetigte
+    Nuki-Autorisierung (siehe Kommentar bei NUKI_BACKGROUND_RETRY_INTERVAL)."""
+    deadline = time.time() + NUKI_BACKGROUND_RETRY_MINUTES * 60
+    while time.time() < deadline:
+        await asyncio.sleep(NUKI_BACKGROUND_RETRY_INTERVAL)
+        auth = await _find_nuki_auth(session, lock_id, pin)
+        if auth and auth.get("id"):
+            log.info(
+                "Nuki-Code für %s %s (Wohnung %s) im Hintergrund nachträglich bestätigt", first, last, home_name,
+            )
+            await _apply_nuki_confirmation(
+                auth["id"], home_name=home_name, pin=pin, start_ts=start_ts, end_ts=end_ts,
+            )
+            return
+    log.warning(
+        "Nuki-Code für %s %s (Wohnung %s) auch nach %d Minuten Hintergrund-Prüfung nicht bestätigt - "
+        "bitte manuell im Nuki-Account prüfen",
+        first, last, home_name, NUKI_BACKGROUND_RETRY_MINUTES,
+    )
+
+
+async def _reconfirm_nuki_update_later(session, lock_id, auth_id, expected_from, expected_until, first, last, home_name, entry_id):
+    """Hintergrund-Pruefung fuer ein zunaechst unbestaetigtes Nuki-Zeitraum-Update
+    (siehe Kommentar bei NUKI_BACKGROUND_RETRY_INTERVAL) - geprueft wird hier der
+    Soll-Zeitraum der bekannten Auth-ID, nicht nur reine Code-Praesenz."""
+    deadline = time.time() + NUKI_BACKGROUND_RETRY_MINUTES * 60
+    while time.time() < deadline:
+        await asyncio.sleep(NUKI_BACKGROUND_RETRY_INTERVAL)
+        try:
+            async with session.get(
+                f"{NUKI_API_HOST}/smartlock/{lock_id}/auth/{auth_id}", headers=NUKI_HEADERS,
+            ) as r:
+                r.raise_for_status()
+                current = await r.json()
+        except aiohttp.ClientError as e:
+            log.warning("Nuki-Hintergrund-Bestätigung (Update) fehlgeschlagen (Auth %s): %s", auth_id, e)
+            continue
+        if current.get("error"):
+            continue
+        if current.get("allowedFromDate") == expected_from and current.get("allowedUntilDate") == expected_until:
+            log.info(
+                "Nuki-Zeitraum-Update für %s %s (Wohnung %s) im Hintergrund nachträglich bestätigt",
+                first, last, home_name,
+            )
+            await _apply_nuki_confirmation(auth_id, entry_id=entry_id)
+            return
+    log.warning(
+        "Nuki-Zeitraum-Update für %s %s (Wohnung %s) auch nach %d Minuten Hintergrund-Prüfung nicht bestätigt - "
+        "bitte manuell im Nuki-Account prüfen",
+        first, last, home_name, NUKI_BACKGROUND_RETRY_MINUTES,
+    )
+
+
 async def create_access_for_home(session, home, first, last, start_ts, end_ts, remarks, visitor_company):
     """Legt Zutritt fuer eine Wohnung an - bei UniFi Access und/oder Nuki, je nachdem
     was fuer sie konfiguriert ist (eine Wohnung kann z.B. eine UniFi-Tuer und eine
@@ -444,11 +532,15 @@ async def create_access_for_home(session, home, first, last, start_ts, end_ts, r
                 succeeded.append("Nuki")
             else:
                 log.warning(
-                    "Nuki-Code wurde angenommen, aber nicht bestätigt (Wohnung %s) - "
-                    "ggf. Sync-Verzögerung, bitte im Nuki-Account prüfen",
-                    home["name"],
+                    "Nuki-Code wurde angenommen, aber nicht sofort bestätigt (Wohnung %s) - Bridge synct "
+                    "ggf. verzögert, Prüfung läuft im Hintergrund bis zu %d Minuten weiter",
+                    home["name"], NUKI_BACKGROUND_RETRY_MINUTES,
                 )
                 unconfirmed.append("Nuki")
+                asyncio.create_task(_reconfirm_nuki_later(
+                    session, _parse_nuki_smartlock_id(home["nuki_smartlock_id"]), pin, first, last,
+                    home["name"], start_ts, end_ts,
+                ))
         except (aiohttp.ClientError, ValueError) as e:
             log.error("Nuki-Code-Erstellung fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"Nuki ({e})")
@@ -495,11 +587,16 @@ async def update_access_for_home(session, home, entry, first, last, start_ts, en
                 succeeded.append("Nuki")
             else:
                 log.warning(
-                    "Nuki-Zeitraum-Update wurde angenommen, aber nicht bestätigt (Wohnung %s) - "
-                    "ggf. Sync-Verzögerung, bitte im Nuki-Account prüfen",
-                    home["name"],
+                    "Nuki-Zeitraum-Update wurde angenommen, aber nicht sofort bestätigt (Wohnung %s) - Bridge "
+                    "synct ggf. verzögert, Prüfung läuft im Hintergrund bis zu %d Minuten weiter",
+                    home["name"], NUKI_BACKGROUND_RETRY_MINUTES,
                 )
                 unconfirmed.append("Nuki")
+                asyncio.create_task(_reconfirm_nuki_update_later(
+                    session, _parse_nuki_smartlock_id(home["nuki_smartlock_id"]), nuki_auth_id,
+                    _iso_millis_utc(start_ts), _iso_millis_utc(end_ts), first, last, home["name"],
+                    entry.get("entry_id"),
+                ))
         except (aiohttp.ClientError, ValueError) as e:
             log.error("Nuki-Zeitraum-Update fehlgeschlagen (Wohnung %s): %s", home["name"], e)
             failed.append(f"Nuki ({e})")
@@ -1469,8 +1566,9 @@ async def dashboard_create_visitor(request):
     if unconfirmed:
         success += (
             f'</p><p class="msg-error">Hinweis: {html.escape(", ".join(unconfirmed))} wurde angenommen, '
-            f"aber nicht als aktiv bestätigt (Nukis API ist asynchron - ggf. Sync-Verzögerung, bitte "
-            f"in ein paar Minuten im Nuki-Account prüfen)."
+            f"aber nicht sofort bestätigt (Nukis API ist asynchron). Die Prüfung läuft im Hintergrund "
+            f"automatisch bis zu {NUKI_BACKGROUND_RETRY_MINUTES} Minuten weiter - der Status korrigiert "
+            f"sich in der Besucherübersicht von selbst, sobald Nuki bestätigt."
         )
     if failed:
         success += f'</p><p class="msg-error">Achtung, fehlgeschlagen: {html.escape("; ".join(failed))}'
@@ -1570,8 +1668,9 @@ async def dashboard_update_visitor(request):
     if unconfirmed:
         success += (
             f'</p><p class="msg-error">Hinweis: {html.escape(", ".join(unconfirmed))} wurde angenommen, '
-            f"aber nicht als aktiv bestätigt (Nukis API ist asynchron - ggf. Sync-Verzögerung, bitte "
-            f"in ein paar Minuten im Nuki-Account prüfen)."
+            f"aber nicht sofort bestätigt (Nukis API ist asynchron). Die Prüfung läuft im Hintergrund "
+            f"automatisch bis zu {NUKI_BACKGROUND_RETRY_MINUTES} Minuten weiter - der Status korrigiert "
+            f"sich in der Besucherübersicht von selbst, sobald Nuki bestätigt."
         )
     if failed:
         success += f'</p><p class="msg-error">Achtung, fehlgeschlagen: {html.escape("; ".join(failed))}'

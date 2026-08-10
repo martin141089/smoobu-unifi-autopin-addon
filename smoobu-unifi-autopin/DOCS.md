@@ -278,8 +278,9 @@ Nach Abschluss aller Konfigurationen:
 *   Türgruppen werden korrekt zugeordnet
 *   Der Fortschritt jedes Webhooks (angenommen, ignoriert, fehlgeschlagen) ist im Add-on‑Log sichtbar
 *   Nuki-Codes werden nach dem Anlegen zusätzlich verifiziert (Nukis API ist
-    asynchron) — bleibt ein Code unbestätigt, steht das klar im Log/Dashboard, ohne
-    UniFi oder die Smoobu-PIN-Rückschreibung zu blockieren
+    asynchron) — bleibt ein Code zunächst unbestätigt, wird bis zu 5 Minuten im
+    Hintergrund weitergeprüft und der Eintrag korrigiert sich bei Erfolg automatisch,
+    ohne UniFi oder die Smoobu-PIN-Rückschreibung zu blockieren
 
 ***
 
