@@ -335,6 +335,12 @@ async def create_nuki_code(session, smartlock_id, pin, name, start_ts, end_ts):
         "type": 13,
         "allowedFromDate": _iso_millis_utc(start_ts),
         "allowedUntilDate": _iso_millis_utc(end_ts),
+        # Laut offizieller Nuki-API-Referenz ist allowedWeekDays "mandatory for
+        # setting time-limited access" - ohne dieses Feld wird die Datumsgrenze
+        # (allowedFromDate/allowedUntilDate) von Nuki NICHT durchgesetzt und der Code
+        # bleibt dauerhaft aktiv. 127 = alle Wochentage erlaubt (keine zusaetzliche
+        # Wochentags-Einschraenkung, nur die Datumsgrenze zaehlt).
+        "allowedWeekDays": 127,
     }
     async with session.put(
         f"{NUKI_API_HOST}/smartlock/auth",
@@ -369,6 +375,9 @@ async def update_nuki_code(session, smartlock_id, auth_id, name, start_ts, end_t
         "name": name[:20],
         "allowedFromDate": _iso_millis_utc(start_ts),
         "allowedUntilDate": _iso_millis_utc(end_ts),
+        # Siehe Kommentar in create_nuki_code() - ohne allowedWeekDays wird die
+        # Datumsgrenze von Nuki nicht durchgesetzt.
+        "allowedWeekDays": 127,
     }
     async with session.post(
         f"{NUKI_API_HOST}/smartlock/{lock_id}/auth/{auth_id}",

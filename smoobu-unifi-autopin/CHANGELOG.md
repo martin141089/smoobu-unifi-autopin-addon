@@ -2,6 +2,23 @@
 
 Alle nennenswerten Änderungen an diesem Add-on werden hier dokumentiert.
 
+## [3.14.1]
+
+### Behoben
+- **Nuki-Codes hatten keine tatsächliche Zeitbegrenzung.** Die Felder
+  `allowedFromDate`/`allowedUntilDate` wurden zwar beim Anlegen und beim
+  Zeitraum-Update mitgeschickt, aber laut offizieller Nuki-API-Referenz ist das Feld
+  `allowedWeekDays` **zwingend erforderlich**, damit Nuki die Datumsgrenze überhaupt
+  durchsetzt ("mandatory for setting time-limited access"). Da dieses Feld bisher
+  fehlte, blieb ein einmal angelegter Keypad-Code dauerhaft aktiv - unabhängig vom
+  hinterlegten An-/Abreisedatum. Behoben, indem `allowedWeekDays: 127` (alle
+  Wochentage erlaubt, keine zusätzliche Einschränkung außer der Datumsgrenze) beim
+  Anlegen und beim Ändern mitgeschickt wird, exakt wie im offiziellen Nuki-Beispiel
+  für Keypad-Codes.
+  **Achtung:** Bereits vor diesem Update angelegte Nuki-Codes bleiben unabhängig von
+  ihrem hinterlegten Zeitraum weiter aktiv, bis sie manuell im Nuki-Account gelöscht
+  werden - der Fix wirkt nur auf ab jetzt neu angelegte oder geänderte Codes.
+
 ## [3.14.0]
 
 ### Geändert
