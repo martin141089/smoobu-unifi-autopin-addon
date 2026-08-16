@@ -1,5 +1,7 @@
 # 📘 Smoobu UniFi Access AutoPIN
 
+📖 **[Vollständige Dokumentation](https://martin141089.github.io/smoobu-unifi-autopin-addon/)**
+
 **Multi‑Wohnungs PIN‑ & Visitor‑Automation für UniFi Access + Nuki + Smoobu**
 
 Sobald eine Buchung in Smoobu eingeht, entsteht automatisch ein befristeter Türcode —
@@ -9,7 +11,7 @@ Visitor‑Erstellung für UniFi Access und/oder Nuki Smart Locks basierend auf
 Smoobu‑Buchungen — Multi‑Standort‑fähig, pro Wohnung/Tür frei kombinierbar und
 generisch für beliebige Umgebungen (UDM‑SE, UniFi Access Controller, Nuki Keypad etc.).
 
-**2** Zutrittssysteme · **4** Wohnungen max. · **PIN‑Ziffern 1–9** · **Version 3.11.0**
+**2** Zutrittssysteme · **4** Wohnungen max. · **PIN‑Ziffern 1–9** · **Version 3.15.0**
 
 Es ist **komplett sicher**, denn:
 

@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smoobu UniFi Access AutoPIN — Doku</title>
+<meta name="description" content="Multi-Wohnungs PIN- & Visitor-Automation für UniFi Access + Nuki + Smoobu. Home-Assistant-Add-on Dokumentation.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#12151b;
+    --panel:#1a1f28;
+    --panel-alt:#20262f;
+    --border:#2a313c;
+    --brass:#c9973f;
+    --brass-dim:#8f6d31;
+    --teal:#5fb8a8;
+    --text:#edf0f3;
+    --muted:#93a0b0;
+    --muted-2:#616d7c;
+    --radius:10px;
+    --display: 'Space Grotesk', sans-serif;
+    --body: 'Inter', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--body);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  body{
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(201,151,63,0.06), transparent 45%),
+      radial-gradient(circle at 85% 20%, rgba(95,184,168,0.05), transparent 40%);
+  }
+  a{color:var(--brass);}
+  ::selection{background:var(--brass); color:#161a20;}
+  .wrap{max-width:920px; margin:0 auto; padding:0 28px;}
+  h1,h2,h3{font-family:var(--display); font-weight:600; letter-spacing:-0.01em; margin:0;}
+  code, .mono{font-family:var(--mono);}
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--brass); margin-bottom:10px; display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{content:""; width:16px; height:1px; background:var(--brass-dim);}
+  section{padding:74px 0; border-bottom:1px solid var(--border);}
+  section:last-of-type{border-bottom:none;}
+
+  /* ---------- NAV ---------- */
+  nav{
+    position:sticky; top:0; z-index:50; backdrop-filter:blur(10px);
+    background:rgba(18,21,27,0.85); border-bottom:1px solid var(--border);
+  }
+  nav .wrap{display:flex; align-items:center; justify-content:space-between; padding:14px 28px;}
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:600; font-size:15px;}
+  .brand .dot{width:9px; height:9px; border-radius:2px; background:var(--brass); box-shadow:0 0 10px rgba(201,151,63,0.7);}
+  nav ul{list-style:none; display:flex; gap:26px; margin:0; padding:0;}
+  nav a{color:var(--muted); text-decoration:none; font-size:14px;}
+  nav a:hover{color:var(--text);}
+  .nav-links{display:flex; align-items:center; gap:26px;}
+  .gh-link{
+    border:1px solid var(--border); padding:7px 14px; border-radius:7px; color:var(--text) !important;
+    font-size:13px; display:flex; align-items:center; gap:7px;
+  }
+  .gh-link:hover{border-color:var(--brass-dim);}
+
+  /* ---------- HERO ---------- */
+  .hero{padding:96px 0 88px; border-bottom:1px solid var(--border); position:relative; overflow:hidden;}
+  .hero-grid{display:grid; grid-template-columns:1.15fr 0.85fr; gap:56px; align-items:center;}
+  .hero h1{font-size:44px; line-height:1.08; margin-bottom:20px;}
+  .hero h1 em{font-style:normal; color:var(--brass);}
+  .hero p.lead{color:var(--muted); font-size:17px; max-width:52ch; margin-bottom:30px;}
+  .badges{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:34px;}
+  .badge{
+    font-family:var(--mono); font-size:12px; color:var(--muted); border:1px solid var(--border);
+    padding:6px 11px; border-radius:20px; background:var(--panel);
+  }
+  .badge b{color:var(--text); font-weight:500;}
+  .cta-row{display:flex; gap:14px; flex-wrap:wrap;}
+  .btn{
+    font-family:var(--body); font-weight:600; font-size:14px; padding:12px 20px; border-radius:8px;
+    text-decoration:none; display:inline-flex; align-items:center; gap:8px; transition:transform .15s ease;
+  }
+  .btn:hover{transform:translateY(-1px);}
+  .btn-primary{background:var(--brass); color:#161a20;}
+  .btn-ghost{border:1px solid var(--border); color:var(--text);}
+
+  /* ---------- KEYPAD (signature element) ---------- */
+  .keypad-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:26px;
+    box-shadow:0 30px 60px -30px rgba(0,0,0,0.6);
+  }
+  .keypad-screen{
+    background:#0d1015; border:1px solid var(--border); border-radius:8px; padding:16px 18px;
+    margin-bottom:18px; font-family:var(--mono); font-size:13px; color:var(--teal);
+  }
+  .keypad-screen .dim{color:var(--muted-2);}
+  .keypad-digits{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+  .key{
+    aspect-ratio:1; border-radius:8px; background:var(--panel-alt); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:19px;
+    color:var(--muted); transition:all .5s ease;
+  }
+  .key.lit{background:rgba(201,151,63,0.16); border-color:var(--brass); color:var(--brass); box-shadow:0 0 16px rgba(201,151,63,0.25);}
+  .keypad-caption{font-family:var(--mono); font-size:11.5px; color:var(--muted-2); margin-top:16px; text-align:center;}
+
+  /* ---------- FLOW DIAGRAM ---------- */
+  .flow{display:grid; grid-template-columns:repeat(4,1fr); gap:0; align-items:stretch; margin-top:44px;}
+  .flow-node{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 16px;
+    text-align:center; position:relative;
+  }
+  .flow-node.core{border-color:var(--brass-dim); background:linear-gradient(180deg, rgba(201,151,63,0.08), transparent);}
+  .flow-node .k{font-family:var(--mono); font-size:11px; color:var(--brass); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; display:block;}
+  .flow-node .t{font-size:14px; font-weight:600; margin-bottom:4px;}
+  .flow-node .d{font-size:12.5px; color:var(--muted);}
+  .flow-arrow{display:flex; align-items:center; justify-content:center; color:var(--muted-2); font-family:var(--mono); font-size:12px; padding:0 6px;}
+  .flow-back{
+    margin-top:10px; text-align:center; font-family:var(--mono); font-size:12px; color:var(--teal);
+    border:1px dashed rgba(95,184,168,0.4); border-radius:8px; padding:10px; background:rgba(95,184,168,0.05);
+  }
+
+  /* ---------- SECTION HEADS ---------- */
+  .section-head{margin-bottom:38px;}
+  .section-head h2{font-size:28px;}
+  .section-head p{color:var(--muted); margin-top:10px; max-width:60ch;}
+
+  /* ---------- FEATURE GRID ---------- */
+  .grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
+  .grid-2{display:grid; grid-template-columns:repeat(2,1fr); gap:16px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:22px;}
+  .card h3{font-size:15px; margin-bottom:8px; display:flex; align-items:center; gap:9px;}
+  .card h3 .ic{color:var(--brass); font-family:var(--mono);}
+  .card p{color:var(--muted); font-size:13.5px; margin:0;}
+
+  /* ---------- CHECKLIST ---------- */
+  .checklist{list-style:none; margin:0; padding:0; display:grid; gap:12px;}
+  .checklist li{
+    display:flex; gap:14px; padding:16px 18px; background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; font-size:14px;
+  }
+  .checklist li .chk{
+    flex:none; width:20px; height:20px; border-radius:5px; border:1px solid var(--brass-dim);
+    color:var(--brass); font-size:12px; display:flex; align-items:center; justify-content:center; margin-top:2px;
+    font-family:var(--mono);
+  }
+  .checklist b{color:var(--text);}
+  .checklist span.note{color:var(--muted);}
+
+  /* ---------- STEPS ---------- */
+  .steps{counter-reset:step; display:grid; gap:0;}
+  .step{display:grid; grid-template-columns:44px 1fr; gap:18px; padding:20px 0; border-top:1px solid var(--border);}
+  .step:first-child{border-top:none;}
+  .step .num{
+    counter-increment:step; font-family:var(--mono); color:var(--brass); font-size:13px;
+    width:32px; height:32px; border:1px solid var(--brass-dim); border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .step .num::before{content: counter(step, decimal-leading-zero);}
+  .step h4{margin:0 0 4px; font-size:15px; font-weight:600;}
+  .step p{margin:0; color:var(--muted); font-size:13.5px;}
+
+  /* ---------- CODE BLOCK ---------- */
+  pre{
+    background:#0d1015; border:1px solid var(--border); border-radius:10px; padding:20px;
+    overflow-x:auto; font-family:var(--mono); font-size:12.8px; line-height:1.65; color:#d5dbe3;
+  }
+  pre .c1{color:var(--muted-2);}
+  pre .k{color:var(--brass);}
+  pre .s{color:var(--teal);}
+  .code-tag{
+    display:inline-block; font-family:var(--mono); font-size:11px; color:var(--muted);
+    border:1px solid var(--border); padding:4px 9px; border-radius:6px; margin-bottom:10px;
+  }
+
+  /* ---------- ENDPOINTS ---------- */
+  .endpoint{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px 22px; margin-bottom:14px;
+  }
+  .endpoint .path{
+    font-family:var(--mono); font-size:14px; color:var(--brass); display:flex; align-items:center; gap:10px; margin-bottom:10px;
+  }
+  .endpoint .method{
+    font-size:10.5px; border:1px solid var(--teal); color:var(--teal); padding:2px 7px; border-radius:5px; font-family:var(--mono);
+  }
+  .endpoint pre{margin:0; font-size:12px;}
+
+  /* ---------- TIMELINE ---------- */
+  .timeline{position:relative; padding-left:26px;}
+  .timeline::before{content:""; position:absolute; left:5px; top:6px; bottom:6px; width:1px; background:var(--border);}
+  .tl-item{position:relative; padding-bottom:26px;}
+  .tl-item:last-child{padding-bottom:0;}
+  .tl-item::before{
+    content:""; position:absolute; left:-26px; top:4px; width:11px; height:11px; border-radius:50%;
+    background:var(--bg); border:2px solid var(--brass-dim);
+  }
+  .tl-item.now::before{border-color:var(--brass); background:var(--brass); box-shadow:0 0 10px rgba(201,151,63,0.5);}
+  .tl-v{font-family:var(--mono); font-size:12.5px; color:var(--brass); margin-bottom:3px;}
+  .tl-t{font-weight:600; font-size:14.5px; margin-bottom:3px;}
+  .tl-d{color:var(--muted); font-size:13px; max-width:65ch;}
+
+  /* ---------- FOOTER ---------- */
+  footer{padding:50px 0 60px;}
+  footer .wrap{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;}
+  footer .fmuted{color:var(--muted-2); font-size:12.5px; font-family:var(--mono);}
+  footer .flinks{display:flex; gap:20px;}
+  footer a{color:var(--muted); text-decoration:none; font-size:13px;}
+  footer a:hover{color:var(--text);}
+
+  @media (max-width: 860px){
+    .hero-grid{grid-template-columns:1fr;}
+    .grid-3{grid-template-columns:1fr;}
+    .grid-2{grid-template-columns:1fr;}
+    .flow{grid-template-columns:1fr; gap:10px;}
+    .flow-arrow{transform:rotate(90deg); padding:4px 0;}
+    nav ul{display:none;}
+    .hero h1{font-size:32px;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .key{transition:none;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span> AutoPIN</div>
+    <div class="nav-links">
+      <ul>
+        <li><a href="#funktioniert">Funktionsweise</a></li>
+        <li><a href="#funktionen">Funktionen</a></li>
+        <li><a href="#installation">Installation</a></li>
+        <li><a href="#konfiguration">Konfiguration</a></li>
+        <li><a href="#dashboard">Dashboard</a></li>
+        <li><a href="#changelog">Changelog</a></li>
+      </ul>
+      <a class="gh-link" href="https://github.com/martin141089/smoobu-unifi-autopin-addon" target="_blank" rel="noopener">
+        GitHub ↗
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">Home-Assistant-Add-on · Version 3.15.0</div>
+      <h1>Sobald die Buchung reinkommt,<br><em>steht der Türcode</em> bereit.</h1>
+      <p class="lead">
+        Automatische PIN- &amp; Visitor-Erstellung für UniFi Access und/oder Nuki Smart Locks,
+        ausgelöst durch Smoobu-Buchungen. Multi-Standort-fähig, pro Wohnung und Tür frei
+        kombinierbar — läuft komplett lokal in Home Assistant.
+      </p>
+      <div class="badges">
+        <span class="badge"><b>2</b> Zutrittssysteme</span>
+        <span class="badge"><b>4</b> Wohnungen max.</span>
+        <span class="badge">PIN-Ziffern <b>1–9</b></span>
+        <span class="badge">HMAC-signierte Webhooks</span>
+        <span class="badge">Ingress-Login, kein Extra-Passwort</span>
+      </div>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#installation">Installation ansehen</a>
+        <a class="btn btn-ghost" href="https://github.com/martin141089/smoobu-unifi-autopin-addon" target="_blank" rel="noopener">Repository öffnen</a>
+      </div>
+    </div>
+    <div class="keypad-card">
+      <div class="keypad-screen">
+        <span id="screen-text">Buchung erkannt …</span><br>
+        <span class="dim" id="screen-sub">Panoramablick · 3 Nächte</span>
+      </div>
+      <div class="keypad-digits" id="keypad">
+        <div class="key">1</div><div class="key">2</div><div class="key">3</div>
+        <div class="key">4</div><div class="key">5</div><div class="key">6</div>
+        <div class="key">7</div><div class="key">8</div><div class="key">9</div>
+      </div>
+      <div class="keypad-caption">Derselbe PIN funktioniert auf UniFi- und Nuki-Keypads — deshalb nur Ziffern 1–9</div>
+    </div>
+  </div>
+</header>
+
+<section id="funktioniert">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Ablauf</div>
+      <h2>So funktioniert's</h2>
+      <p>Eine neue oder geänderte Buchung löst per Webhook die Kette aus. Derselbe Weg lässt sich
+        auch manuell im Dashboard anstoßen — etwa für Handwerker oder Reinigung, unabhängig von
+        einer Buchung.</p>
+    </div>
+    <div class="flow">
+      <div class="flow-node">
+        <span class="k">Auslöser</span>
+        <div class="t">Smoobu-Buchung</div>
+        <div class="d">Neue oder geänderte Reservierung, HMAC-signierter Webhook</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node core">
+        <span class="k">AutoPIN Add-on</span>
+        <div class="t">PIN-Generator</div>
+        <div class="d">Zeitfenster berechnen, Wohnung zuordnen, Historie führen</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node">
+        <span class="k">Zutritt</span>
+        <div class="t">UniFi Access + Nuki</div>
+        <div class="d">Befristeter Visitor bzw. verifizierter Keypad-Code, derselbe PIN</div>
+      </div>
+    </div>
+    <div class="flow-back">← PIN wird zusätzlich als <code>[doorPin]</code>-Platzhalter an die Smoobu-Buchung zurückgeschrieben</div>
+  </div>
+</section>
+
+<section id="funktionen">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Überblick</div>
+      <h2>Funktionen</h2>
+    </div>
+    <div class="grid-3">
+      <div class="card">
+        <h3><span class="ic">✓</span> Zwei Zutrittssysteme</h3>
+        <p>UniFi Access und/oder Nuki Smart Locks — pro Wohnung oder sogar pro Tür frei kombinierbar, mit identischem PIN auf beiden.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">✓</span> Multi-Wohnung</h3>
+        <p>Bis zu vier Wohnungen, Routing anhand des exakten Smoobu-Property-Namens.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">✓</span> Web-Dashboard</h3>
+        <p>Übersicht aktueller Buchungen und angelegter Besucher direkt in der HA-Seitenleiste, per Ingress abgesichert.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">✓</span> Zeitraum nachträglich änderbar</h3>
+        <p>An-/Abreise eines bereits angelegten Besuchers im Dashboard anpassen — PIN bleibt gleich, nur der Zeitraum wird aktualisiert.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">✓</span> Fehlerbenachrichtigung</h3>
+        <p>Fehlgeschlagene oder dauerhaft unbestätigte PIN-Anlagen lösen eine HA-Benachrichtigung und ein Event aus.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">✓</span> Keine Geheimnisse im Repo</h3>
+        <p>Alle Zugangsdaten werden ausschließlich lokal in der HA-Konfiguration hinterlegt und lokal über HTTPS abgefragt.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="voraussetzungen">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Bevor es losgeht</div>
+      <h2>Voraussetzungen</h2>
+    </div>
+    <ul class="checklist">
+      <li><span class="chk">✓</span><span><b>UniFi Access:</b> <span class="note">IP/Hostname des Controllers + API-Token (Einstellungen → Sicherheit → Erweiterte API-Einstellungen)</span></span></li>
+      <li><span class="chk">✓</span><span><b>Nuki (optional):</b> <span class="note">API-Token aus dem Nuki-Web-Account sowie ein physisches Nuki Keypad am jeweiligen Smart Lock</span></span></li>
+      <li><span class="chk">✓</span><span><b>Smoobu:</b> <span class="note"><code>smoobu_api_key</code> und <code>smoobu_api_secret</code> (Einstellungen → API)</span></span></li>
+      <li><span class="chk">✓</span><span><b>Webhook-Secret:</b> <span class="note">ein selbst gewählter, ausreichend langer Zufallsstring</span></span></li>
+      <li><span class="chk">✓</span><span><b>Exakte Wohnungsnamen in Smoobu:</b> <span class="note">müssen 1:1 in <code>homeN_name</code> eingetragen werden</span></span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="installation">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Setup</div>
+      <h2>Installation</h2>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="num"></div><div><h4>Repository hinzufügen</h4><p>Einstellungen → Add-ons → Add-on Store → Repositories → <code>github.com/martin141089/smoobu-unifi-autopin-addon</code></p></div></div>
+      <div class="step"><div class="num"></div><div><h4>Add-on installieren</h4><p>„Smoobu UniFi Access AutoPIN" in der Liste suchen und installieren — noch nicht starten.</p></div></div>
+      <div class="step"><div class="num"></div><div><h4>Konfiguration ausfüllen</h4><p>Alle Werte aus den Voraussetzungen eintragen. Türgruppen-, Policy- und Nuki-IDs können zunächst leer bleiben.</p></div></div>
+      <div class="step"><div class="num"></div><div><h4>Add-on starten</h4><p>Erst danach sind <code>/scan</code>, <code>/policies</code> und <code>/nuki-locks</code> erreichbar.</p></div></div>
+      <div class="step"><div class="num"></div><div><h4>IDs ermitteln &amp; nachtragen</h4><p>Türgruppen-, Policy- und Nuki-Smartlock-IDs über die lokalen Hilfsseiten auslesen, eintragen, Add-on neu starten.</p></div></div>
+      <div class="step"><div class="num"></div><div><h4>Smoobu-Webhook einrichten</h4><p>Webhook-URL in Smoobu hinterlegen, Events „Buchung erstellt" und „Buchung geändert" aktivieren.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="konfiguration">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Referenz</div>
+      <h2>Konfiguration</h2>
+      <p>Pro Wohnung frei kombinierbar: nur UniFi, nur Nuki, oder beides gleichzeitig. Bei beiden
+        gleichzeitig erhalten UniFi und Nuki denselben PIN.</p>
+    </div>
+    <span class="code-tag">config.yaml</span>
+    <pre><span class="k">options</span>:
+  smoobu_api_key: <span class="s">""</span>
+  smoobu_api_secret: <span class="s">""</span>          <span class="c1"># seit v3.0 — löst den alten Api-Key-Header ab</span>
+  unifi_host: <span class="s">""</span>
+  unifi_token: <span class="s">""</span>
+  webhook_secret: <span class="s">""</span>
+  nuki_api_token: <span class="s">""</span>              <span class="c1"># optional, nur falls Nuki genutzt wird</span>
+  admin_email: <span class="s">""</span>                 <span class="c1"># optional, Kontaktadresse für UniFi-Visitoren</span>
+  default_checkin_time: <span class="s">"15:00"</span>
+  default_checkout_time: <span class="s">"11:00"</span>
+  notify_on_failure: <span class="k">true</span>          <span class="c1"># seit v3.15 — HA-Benachrichtigung bei Fehlern</span>
+
+  homes_count: <span class="k">1</span>
+
+  home1_name: <span class="s">""</span>
+  home1_policy_id: <span class="s">""</span>
+  home1_door_group_id: <span class="s">""</span>
+  home1_nuki_smartlock_id: <span class="s">""</span>     <span class="c1"># Dezimal- oder Hex-Form akzeptiert</span></pre>
+    <p style="color:var(--muted); font-size:13.5px; margin-top:18px;">
+      Analog für <code>home2_*</code> bis <code>home4_*</code>. <code>homes_count</code> steuert,
+      wie viele davon aktiv ausgewertet werden.
+    </p>
+  </div>
+</section>
+
+<section id="endpoints">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Lokale Hilfsseiten</div>
+      <h2>IDs ermitteln</h2>
+      <p>Laufen auf demselben Port wie der Webhook (<code>8099</code>) — ein separater Port ist nicht nötig.</p>
+    </div>
+    <div class="endpoint">
+      <div class="path"><span class="method">GET</span> :8099/scan</div>
+      <pre>=== TÜRGRUPPE ===
+NAME: EG Wohnung
+ID:   5c496423-...
+
+   - TÜR: Eingang EG → 6ff875d2-...</pre>
+    </div>
+    <div class="endpoint">
+      <div class="path"><span class="method">GET</span> :8099/policies</div>
+      <pre>Liste aller UniFi-Access-Policies mit Name und ID</pre>
+    </div>
+    <div class="endpoint">
+      <div class="path"><span class="method">GET</span> :8099/nuki-locks</div>
+      <pre>Gefundene Nuki Smart Locks:
+
+NAME: Haustür Weitblick   ID: 12345678</pre>
+    </div>
+  </div>
+</section>
+
+<section id="dashboard">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Seitenleiste · „FeWo-Tür-PIN"</div>
+      <h2>Dashboard</h2>
+      <p>Erreichbar über Home-Assistant-Ingress — abgesichert mit dem bestehenden HA-Login,
+        kein separates Passwort nötig.</p>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3><span class="ic">→</span> Aktuelle &amp; kommende Besucher</h3>
+        <p>Gast, Wohnung, PIN, Zeitraum, genutztes System (UniFi/Nuki) und Quelle. Vergangene
+          Aufenthalte werden automatisch ausgeblendet. Extern in UniFi angelegte Visitoren
+          erscheinen ebenfalls, mit PIN „unbekannt".</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">→</span> Zeitraum bearbeiten</h3>
+        <p>An-/Abreise inkl. Uhrzeit nachträglich ändern, PIN bleibt unverändert. Ältere
+          Einträge lassen sich per „Jetzt verknüpfen" einmalig nachrüsten.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">→</span> Kommende Smoobu-Buchungen</h3>
+        <p>Tabelle aller aktuellen und kommenden Reservierungen mit Direktlink „Besucher
+          anlegen", der das Formular vorausfüllt.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">→</span> Manuelle Besucher-Anlage</h3>
+        <p>Komplett unabhängig von einer Buchung — z.&nbsp;B. für Handwerker oder
+          Reinigungspersonal, mit frei wählbarem Zeitraum.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="webhook">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Smoobu</div>
+      <h2>Webhook konfigurieren</h2>
+    </div>
+    <pre>http://HOMEASSISTANT-IP:8099/?secret=DEIN_SECRET</pre>
+    <p style="color:var(--muted); font-size:13.5px; margin-top:16px;">
+      Smoobu sendet alle Ereignistypen an diese eine URL — das Add-on filtert intern und
+      reagiert nur auf <code>newReservation</code> und <code>updateReservation</code>.
+      Alle anderen Events werden mit HTTP 200 quittiert und ignoriert.
+    </p>
+    <p style="color:var(--muted); font-size:13.5px;">
+      Platzhalter in Gästenachrichten: <code>Tür-PIN: [doorPin]</code>
+    </p>
+  </div>
+</section>
+
+<section id="changelog">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Entstehung</div>
+      <h2>Von der ersten Codedurchsicht zur Zwei-Systeme-Automation</h2>
+    </div>
+    <div class="timeline">
+      <div class="tl-item now">
+        <div class="tl-v">v3.15</div>
+        <div class="tl-t">HA-Benachrichtigung bei Fehlern</div>
+        <div class="tl-d">Fehlgeschlagene oder dauerhaft unbestätigte PIN-Anlagen melden sich direkt in der HA-Glocke sowie als Event für eigene Automatisierungen.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.14</div>
+        <div class="tl-t">Verlässliche Nuki-Bestätigung</div>
+        <div class="tl-d">Hintergrundprüfung bis zu 5 Minuten statt starrem 8-Sekunden-Fenster, plus Fix für die tatsächliche Zeitbegrenzung von Nuki-Codes.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.13</div>
+        <div class="tl-t">Alteinträge nachrüstbar</div>
+        <div class="tl-d">„Jetzt verknüpfen" findet vor der Bearbeitbarkeit angelegte Besucher einmalig in UniFi/Nuki wieder.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.12</div>
+        <div class="tl-t">Zeitraum-Bearbeitung</div>
+        <div class="tl-d">Anreise/Abreise bereits angelegter Besucher im Dashboard änderbar, PIN bleibt gleich.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.9–3.11</div>
+        <div class="tl-t">Besucher-Historie &amp; Fein-Schliff</div>
+        <div class="tl-d">Lokale, persistente PIN-Zuordnung, einstellbare Check-in-/-out-Zeiten, Abgleich mit extern angelegten UniFi-Visitoren.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.7–3.8</div>
+        <div class="tl-t">Nuki-Unterstützung</div>
+        <div class="tl-d">Zweites Zutrittssystem, frei mit UniFi Access kombinierbar, inkl. verifizierter Zustellung und Admin-Kontaktadresse.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.5–3.6</div>
+        <div class="tl-t">Web-Dashboard &amp; Ingress-Login</div>
+        <div class="tl-d">Buchungsübersicht und manuelle Besucher-Anlage direkt in der HA-Seitenleiste, native HA-Authentifizierung statt Basic-Auth.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v3.0</div>
+        <div class="tl-t">HMAC-Migration</div>
+        <div class="tl-d">Rechtzeitig auf Smoobus signierte Authentifizierung umgestellt.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-v">v1.x</div>
+        <div class="tl-t">Grundgerüst</div>
+        <div class="tl-d">Vom blockierenden Prototyp zum durchgängig asynchronen Add-on mit strukturiertem Logging und sicherer PIN-/Secret-Erzeugung.</div>
+      </div>
+    </div>
+    <p style="margin-top:30px;">
+      <a href="https://github.com/martin141089/smoobu-unifi-autopin-addon/blob/main/smoobu-unifi-autopin/CHANGELOG.md" target="_blank" rel="noopener">
+        Vollständiges CHANGELOG.md im Repository →
+      </a>
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fmuted">smoobu-unifi-autopin-addon · MIT License</div>
+    <div class="flinks">
+      <a href="https://github.com/martin141089/smoobu-unifi-autopin-addon" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/martin141089/smoobu-unifi-autopin-addon/blob/main/smoobu-unifi-autopin/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+      <a href="https://github.com/martin141089/smoobu-unifi-autopin-addon/issues" target="_blank" rel="noopener">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Signature element: cycle a lit digit through the keypad, referencing the
+  // real "digits 1-9 only" PIN constraint. Respects reduced-motion.
+  (function(){
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var keys = document.querySelectorAll('#keypad .key');
+    var screenText = document.getElementById('screen-text');
+    var screenSub = document.getElementById('screen-sub');
+    if(reduce || !keys.length) return;
+
+    var messages = [
+      ["Buchung erkannt …", "Panoramablick · 3 Nächte"],
+      ["PIN wird erzeugt …", "Nur Ziffern 1–9"],
+      ["UniFi Access …", "Befristeter Visitor wird angelegt"],
+      ["Nuki Keypad …", "Code wird verifiziert"],
+      ["Fertig.", "PIN an Smoobu zurückgeschrieben"]
+    ];
+    var msgIdx = 0;
+    var pin = [];
+    function randomPin(){
+      var p = [];
+      for(var i=0;i<4;i++){ p.push(1 + Math.floor(Math.random()*9)); }
+      return p;
+    }
+    pin = randomPin();
+    var step = 0;
+
+    function tick(){
+      keys.forEach(function(k){ k.classList.remove('lit'); });
+      if(step < pin.length){
+        keys.forEach(function(k){
+          if(parseInt(k.textContent,10) === pin[step]) k.classList.add('lit');
+        });
+      }
+      if(step === 0){
+        screenText.textContent = messages[msgIdx][0];
+        screenSub.textContent = messages[msgIdx][1];
+      }
+      step++;
+      if(step > pin.length){
+        step = 0;
+        pin = randomPin();
+        msgIdx = (msgIdx + 1) % messages.length;
+      }
+    }
+    setInterval(tick, 850);
+    tick();
+  })();
+</script>
+
+</body>
+</html>
